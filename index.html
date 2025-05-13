@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>马丁格尔合约计算器 (USDT)</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入 html2canvas 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+    <div class="calculator-container">
+        <h1>马丁格尔合约计算器 (USDT本位)</h1>
+
+        <form id="calculator-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="direction">开仓方向:</label>
+                    <select id="direction" name="direction">
+                        <option value="long">做多</option>
+                        <option value="short">做空</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="initial-price">第一次开仓价格 (USDT):</label>
+                    <input type="number" id="initial-price" name="initial-price" step="any" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="add-diff-percent">涨/跌多少加仓 (%):</label>
+                    <input type="number" id="add-diff-percent" name="add-diff-percent" value="1" step="any" required min="0">
+                </div>
+
+                <div class="form-group">
+                    <label for="tp-percent">单周期止盈目标 (%):</label>
+                    <input type="number" id="tp-percent" name="tp-percent" value="0.38" step="any" required min="0">
+                </div>
+
+                <div class="form-group">
+                    <label for="initial-margin">首次下单保证金 (USDT):</label>
+                    <input type="number" id="initial-margin" name="initial-margin" value="20" step="any" required min="0">
+                </div>
+
+                <div class="form-group">
+                    <label for="add-margin">加仓单保证金 (基础, USDT):</label>
+                    <input type="number" id="add-margin" name="add-margin" value="15" step="any" required min="0">
+                </div>
+
+                 <div class="form-group">
+                    <label for="max-adds">最大加仓次数:</label>
+                    <input type="number" id="max-adds" name="max-adds" value="13" required min="0" step="1">
+                </div>
+
+                <div class="form-group">
+                    <label for="leverage">杠杆倍数:</label>
+                    <input type="number" id="leverage" name="leverage" value="8" step="any" required min="1">
+                </div>
+
+                <div class="form-group">
+                    <label for="amount-multiplier">加仓金额倍数:</label>
+                    <input type="number" id="amount-multiplier" name="amount-multiplier" value="1.5" step="any" required min="0">
+                </div>
+
+                 <div class="form-group">
+                    <label for="diff-multiplier">加仓价差倍数:</label>
+                    <input type="number" id="diff-multiplier" name="diff-multiplier" value="0.98" step="any" required min="0">
+                </div>
+            </div>
+
+            <button type="submit">计算</button>
+            <button type="button" id="export-image-btn">导出为图片</button>
+        </form>
+
+        <div id="results" class="results-container" style="display: none;">
+            <h2>计算结果</h2>
+
+            <h3>逐次加仓详情:</h3>
+            <div class="table-container">
+                <table id="steps-table">
+                    <thead>
+                        <tr>
+                            <th>加仓序号</th>
+                            <th>理论委托价 (USDT)</th>
+                            <th>理论委托量</th>
+                            <th>本次保证金 (USDT)</th>
+                            <th>本次未实现盈亏 (USDT)</th>
+                            <th>加仓后均价 (USDT)</th>
+                            <th>本次止盈价 (USDT)</th>
+                            <th>本次止盈收益 (USDT)</th>
+                            <th>距止盈需涨/跌 (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="steps-tbody">
+                        <!-- 结果将由 JS 填充 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>总体概要:</h3>
+            <div id="summary">
+                <p><strong>最终持仓成本 (均价):</strong> <span id="final-avg-price">-</span> USDT</p>
+                <p><strong>总体所需保证金:</strong> <span id="total-margin">-</span> USDT</p>
+                <p><strong>最后一次加仓时未实现盈亏:</strong> <span id="final-unrealized-pnl">-</span> USDT</p>
+                <p><strong>理论爆仓价格:</strong> <span id="liquidation-price">无法精确计算 (需杠杆和维持保证金率)</span></p>
+                <p><strong>距爆仓价差 (%):</strong> <span id="liq-diff-percent">-</span></p>
+                <p><strong>首尾价差 (%):</strong> <span id="price-diff-percent">-</span></p>
+                <p><strong>最终止盈理论收益:</strong> <span id="final-tp-profit">-</span> USDT</p>
+            </div>
+        </div>
+         <p class="disclaimer">免责声明：本计算器结果仅供理论参考，不构成任何投资建议。实际交易结果可能因市场波动、手续费、滑点、资金费率、爆仓机制等多种因素影响而产生差异。</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 

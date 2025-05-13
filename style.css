@@ -1,0 +1,145 @@
+body {
+    font-family: sans-serif;
+    line-height: 1.6;
+    margin: 20px;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+.calculator-container {
+    max-width: 4000px; /* 设置最大宽度 */
+    width: calc(100% - 40px); /* 宽度为视口宽度减去两侧留白 (左右各 20px) */
+    margin: 20px auto; /* 上下外边距 20px，左右自动实现水平居中 */
+    background: #fff;
+    padding: 30px; /* 内部边距 */
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    box-sizing: border-box; /* 确保 padding 和 border 包含在元素的总宽度和高度内 */
+}
+
+h1 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 25px;
+}
+
+form {
+    margin-bottom: 30px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #555;
+}
+
+.form-group input,
+.form-group select {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+button[type="submit"] {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background-color 0.3s ease;
+    margin-top: 20px; /* Add some space above the button */
+}
+
+button[type="submit"]:hover {
+    background-color: #2980b9;
+}
+
+.results-container h2,
+.results-container h3 {
+    color: #2c3e50;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 5px;
+    margin-top: 30px;
+    margin-bottom: 15px;
+}
+
+.table-container {
+    overflow-x: auto; /* Add horizontal scroll for smaller screens */
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: right;
+    /* white-space: nowrap; */ /* 移除或注释掉这行以允许换行 */
+}
+
+th {
+    background-color: #f9f9f9;
+    font-weight: bold;
+    text-align: center;
+}
+
+td:first-child, th:first-child {
+    text-align: center;
+}
+
+#summary p {
+    margin-bottom: 10px;
+    font-size: 1.05rem;
+}
+
+#summary span {
+    font-weight: bold;
+    color: #3498db;
+}
+
+.disclaimer {
+    margin-top: 30px;
+    font-size: 0.9em;
+    color: #777;
+    text-align: center;
+    border-top: 1px solid #eee;
+    padding-top: 15px;
+}
+
+/* 为导出按钮添加样式 */
+#export-image-btn {
+    display: block; /* 使其独占一行 */
+    width: 100%;    /* 与计算按钮同宽 */
+    padding: 12px;  /* 与计算按钮同内边距 */
+    background-color: #2ecc71; /* 绿色背景 */
+    color: white;   /* 白色文字 */
+    border: none;
+    border-radius: 4px; /* 与计算按钮同圆角 */
+    cursor: pointer;
+    font-size: 1.1rem; /* 与计算按钮同字号 */
+    transition: background-color 0.3s ease; /* 与计算按钮同过渡效果 */
+    margin-top: 10px; /* 与计算按钮保持间距 */
+}
+
+#export-image-btn:hover {
+    background-color: #27ae60; /* 悬停时颜色变深 */
+} 
