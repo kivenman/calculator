@@ -1,9 +1,9 @@
 # 马丁格尔合约计算器 (Martingale Contract Calculator)
 
 ## 描述 (Description)
-一个用于USDT本位合约的马丁格尔策略理论计算和模拟的网页工具。用户可以输入多种参数，模拟马丁格尔策略在不同市场行情下的表现，包括逐次加仓详情、平均成本、预估爆仓价、以及考虑手续费和维持保证金率后的理论止盈收益。
+一个用于USDT本位合约的马丁格尔策略理论计算和模拟的网页工具。用户可以输入多种参数，模拟马丁格尔策略在不同市场行情下的表现，包括逐次加仓详情、平均成本、预估爆仓价、以及考虑手续费、维持保证金率和预估资金费用后的理论止盈收益。
 
-(A web-based tool for theoretical calculation and simulation of the Martingale strategy for USDT-margined contracts. Users can input various parameters to simulate the strategy's performance under different market conditions, including step-by-step position increase details, average cost, estimated liquidation price, and theoretical take-profit returns after considering fees and maintenance margin rates.)
+(A web-based tool for theoretical calculation and simulation of the Martingale strategy for USDT-margined contracts. Users can input various parameters to simulate the strategy's performance under different market conditions, including step-by-step position increase details, average cost, estimated liquidation price, and theoretical take-profit returns after considering trading fees, maintenance margin rates, and estimated funding fees.)
 
 ## 功能特性 (Features)
 *   **灵活的参数输入 (Flexible Input Parameters):**
@@ -20,6 +20,8 @@
     *   Taker 手续费 (%) (Taker Fee %)
     *   Maker 手续费 (%) (Maker Fee %)
     *   维持保证金率 (%) (Maintenance Margin Rate %)
+    *   预估资金费率 (%) (Estimated Funding Rate %)
+    *   预估结算次数 (Estimated Funding Settlements)
 *   **详细的计算结果 (Detailed Calculation Results):**
     *   **逐次加仓详情 (Step-by-step Details):**
         *   加仓序号 (Step Number)
@@ -30,7 +32,7 @@
         *   本次未实现盈亏 (Unrealized P&L at this Step)
         *   加仓后均价 (Average Entry Price after this Step)
         *   本次止盈价 (Take Profit Price for current total position)
-        *   本次止盈收益 (Take Profit amount for current total position, fees deducted)
+        *   本次止盈收益 (Take Profit amount for current total position, trading and estimated funding fees deducted)
         *   距止盈需涨/跌 (%) (Percentage to TP from current add price)
     *   **总体概要 (Overall Summary):**
         *   最终持仓成本 (均价) (Final Average Entry Price)
@@ -39,7 +41,8 @@
         *   理论爆仓价格 (Theoretical Liquidation Price)
         *   距爆仓价差 (%) (Percentage difference to Liquidation Price)
         *   首尾价差 (%) (Percentage difference between first and last entry price)
-        *   最终止盈理论收益 (Final Theoretical Take Profit, fees deducted)
+        *   预估总资金费用 (Total Estimated Funding Fee)
+        *   最终止盈理论收益 (Final Theoretical Take Profit, all fees deducted including funding)
 *   **结果导出 (Export Results):**
     *   可以将计算结果区域导出为图片 (PNG) 保存。 (Export results area as a PNG image).
 
@@ -63,6 +66,8 @@
 *   **Taker 手续费 (%) (Taker Fee %):** 吃单（市价单）成交时支付的手续费率。计算器中，所有开仓和平仓均按此费率估算。 (Fee rate for orders that take liquidity (market orders). In this calculator, all opening and closing trades are estimated using this rate.)
 *   **Maker 手续费 (%) (Maker Fee %):** 挂单（限价单）成交时支付的手续费率。当前计算器主要使用Taker费率，此项可为未来扩展预留。 (Fee rate for orders that make liquidity (limit orders). Currently, the calculator primarily uses the Taker Fee for simplicity; this field is for future extension.)
 *   **维持保证金率 (%) (Maintenance Margin Rate %):** 交易所要求的，维持仓位所需的最低保证金占仓位价值的百分比。用于估算理论爆仓价格。 (The minimum percentage of margin required by the exchange to maintain an open position, relative to the position's value. Used for estimating the theoretical liquidation price.)
+*   **预估资金费率 (%) (Estimated Funding Rate %):** 每次资金结算时预估的费率。正数表示您支付资金费，负数表示您收到资金费。例如，0.01表示支付0.01%的费率。该费率会影响理论止盈收益的计算。总的资金费用会根据预估结算次数、各阶段的持仓价值和此费率来估算。 (Estimated rate per funding settlement. Positive means you pay, negative means you receive. E.g., 0.01 for a 0.01% rate paid. This rate affects the calculation of theoretical take-profit. Total funding cost is estimated based on settlement count, position value at each stage, and this rate.)
+*   **预估结算次数 (Estimated Funding Settlements):** 在整个马丁格尔策略周期内（从首次开仓到最终止盈平仓）预估发生资金结算的总次数。总的预估资金费用会按比例分配到策略的每一个阶段（首次开仓和每次加仓）中进行估算并从各阶段的止盈收益中扣除/增加。 (Total estimated number of funding settlements during the entire Martingale strategy cycle, from initial opening to final take-profit closure. The total estimated funding cost is proportionally distributed across each stage of the strategy (initial open and each addition) for estimation and is deducted from/added to the take-profit of each stage.)
 
 ## 免责声明 (Disclaimer)
 本计算器结果仅供理论参考，不构成任何投资建议。实际交易结果可能因市场波动、手续费、滑点、资金费率、具体交易所的爆仓机制及计算方式、账户整体风险等多种因素影响而产生差异。请务必谨慎使用，并结合实际情况进行决策。

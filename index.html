@@ -73,6 +73,16 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="funding-rate" title="每次资金结算时预估的费率。正数为支付，负数为收到。">预估资金费率 (%):</label>
+                    <input type="number" id="funding-rate" name="funding-rate" value="0.01" step="any">
+                </div>
+
+                <div class="form-group">
+                    <label for="funding-settlements" title="在整个马丁格尔策略周期内（从开仓到最终止盈）预估发生资金结算的总次数。">预估结算次数:</label>
+                    <input type="number" id="funding-settlements" name="funding-settlements" value="3" step="1" min="0">
+                </div>
+
+                <div class="form-group">
                     <label for="amount-multiplier">加仓金额倍数:</label>
                     <input type="number" id="amount-multiplier" name="amount-multiplier" value="1.5" step="any" required min="0">
                 </div>
@@ -121,6 +131,7 @@
                 <p><strong>理论爆仓价格:</strong> <span id="liquidation-price">无法精确计算 (需杠杆和维持保证金率)</span></p>
                 <p><strong>距爆仓价差 (%):</strong> <span id="liq-diff-percent">-</span></p>
                 <p><strong>首尾价差 (%):</strong> <span id="price-diff-percent">-</span></p>
+                <p><strong>预估总资金费用:</strong> <span id="total-funding-fee">-</span> USDT</p>
                 <p><strong>最终止盈理论收益:</strong> <span id="final-tp-profit">-</span> USDT</p>
             </div>
         </div>
