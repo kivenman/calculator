@@ -10,284 +10,657 @@ document.addEventListener('DOMContentLoaded', () => {
     const priceDiffPercentSpan = document.getElementById('price-diff-percent');
     const finalTpProfitSpan = document.getElementById('final-tp-profit');
 
-    form.addEventListener('submit', (e) => {
-        e.preventDefault(); // 阻止表单默认提交行为
-        calculateMartingale();
+    // Add tooltips to static table headers once DOM is loaded
+    // These provide explanations for each column in the results table.
+    const tableHeadersTooltips = {
+        '理论委托量': '根据保证金和杠杆计算得出 (计算公式: 保证金 * 杠杆 / 价格)',
+        '本次保证金 (USDT)': '用户在此次开仓或加仓行为中实际投入的保证金金额',
+        '开仓手续费 (USDT)': '本次开仓或加仓所支付的预估手续费 (计算公式: 委托量 * 委托价 * Taker费率)',
+        '本次未实现盈亏 (USDT)': '按本次加仓价计算，总持仓对比最新均价的浮动盈亏 (计算公式: 总数量 * (当前加仓价 - 最新均价) (多头时))',
+        '加仓后均价 (USDT)': '所有已执行仓位的平均成本价 (计算公式: 总价值 / 总数量)',
+        '本次止盈价 (USDT)': '当前总持仓按此均价和止盈百分比计算出的止盈目标价格',
+        '本次止盈收益 (USDT)': '若当前总持仓在此止盈价平仓的理论收益（已扣除所有累计开仓手续费和本次平仓手续费）',
+        '距止盈需涨/跌 (%)': '从本次加仓价到本次止盈价所需的价格变动百分比'
+    };
+    document.querySelectorAll('#steps-table th').forEach(th => {
+        const tooltipText = tableHeadersTooltips[th.textContent.trim()];
+        if (tooltipText) {
+            th.setAttribute('title', tooltipText);
+        }
     });
 
-    function calculateMartingale() {
-        // --- 获取输入 --- 
-        const direction = document.getElementById('direction').value; // 'long' or 'short'
-        const initialPrice = parseFloat(document.getElementById('initial-price').value);
-        const addDiffPercent = parseFloat(document.getElementById('add-diff-percent').value);
-        const tpPercent = parseFloat(document.getElementById('tp-percent').value);
-        const initialMargin = parseFloat(document.getElementById('initial-margin').value);
-        const addMarginBase = parseFloat(document.getElementById('add-margin').value);
-        const maxAdds = parseInt(document.getElementById('max-adds').value);
-        const leverage = parseFloat(document.getElementById('leverage').value);
-        const amountMultiplier = parseFloat(document.getElementById('amount-multiplier').value);
-        const diffMultiplier = parseFloat(document.getElementById('diff-multiplier').value);
 
-        // --- 输入验证 --- 
-        if (isNaN(initialPrice) || initialPrice <= 0 ||
-            isNaN(addDiffPercent) || addDiffPercent <= 0 ||
-            isNaN(tpPercent) || tpPercent <= 0 ||
-            isNaN(initialMargin) || initialMargin <= 0 ||
-            isNaN(addMarginBase) || addMarginBase <= 0 ||
-            isNaN(maxAdds) || maxAdds < 0 ||
-            isNaN(leverage) || leverage < 1 ||
-            isNaN(amountMultiplier) || amountMultiplier <= 0 ||
-            isNaN(diffMultiplier) || diffMultiplier <= 0) {
-            alert('请输入所有有效的正数参数（杠杆倍数至少为1）！');
-            return;
+    form.addEventListener('submit', (e) => {
+        e.preventDefault(); // Prevent default form submission behavior
+        calculateMartingale(); // Trigger the main calculation function
+    });
+
+    /**
+     * Gathers all input values from the HTML form.
+     * Parses string values into appropriate number types (float or integer).
+     * @returns {object} An object containing all form inputs, keyed by their semantic names.
+     *                   Includes: direction, initialPrice, addDiffPercent, tpPercent, initialMargin,
+     *                   addMarginBase, maxAdds, leverage, takerFee, makerFee, maintenanceMarginRate,
+     *                   amountMultiplier, diffMultiplier.
+     */
+    function getFormInputs() {
+        // Read values from form elements and parse them to their respective types.
+        return {
+            direction: document.getElementById('direction').value, // 'long' or 'short'
+            initialPrice: parseFloat(document.getElementById('initial-price').value), // Starting price of the asset
+            addDiffPercent: parseFloat(document.getElementById('add-diff-percent').value), // Percentage difference from initial price to trigger an additional position
+            tpPercent: parseFloat(document.getElementById('tp-percent').value), // Take profit percentage from the average entry price
+            initialMargin: parseFloat(document.getElementById('initial-margin').value), // USDT amount for the first order
+            addMarginBase: parseFloat(document.getElementById('add-margin').value), // Base USDT amount for subsequent additional orders (before multipliers)
+            maxAdds: parseInt(document.getElementById('max-adds').value), // Maximum number of times to add to the position
+            leverage: parseFloat(document.getElementById('leverage').value), // Leverage multiplier
+            takerFee: parseFloat(document.getElementById('taker-fee').value), // Taker fee percentage (e.g., 0.075 for 0.075%)
+            makerFee: parseFloat(document.getElementById('maker-fee').value), // Maker fee percentage (currently primarily using taker for TP calculations)
+            maintenanceMarginRate: parseFloat(document.getElementById('maintenance-margin-rate').value), // Maintenance Margin Rate percentage for liquidation price calculation
+            amountMultiplier: parseFloat(document.getElementById('amount-multiplier').value), // Multiplier for the margin of subsequent additional orders
+            diffMultiplier: parseFloat(document.getElementById('diff-multiplier').value) // Multiplier for the price difference percentage of subsequent additional orders
+        };
+    }
+
+    /**
+     * Validates the parsed user inputs from the form.
+     * Checks for NaN, negative values, and logical constraints (e.g., leverage >= 1).
+     * @param {object} inputs - The input object from `getFormInputs()`.
+     * @returns {object} An errors object where keys are input field IDs and values are error messages.
+     *                   Returns an empty object if all inputs are valid.
+     */
+    function validateInputs(inputs) {
+        const errors = {};
+        // Validate initialPrice: Must be a positive number.
+        if (isNaN(inputs.initialPrice) || inputs.initialPrice <= 0) {
+            errors['initial-price'] = '初始价格必须是大于0的数字。';
         }
+        // Validate addDiffPercent: Must be a positive number for price difference.
+        if (isNaN(inputs.addDiffPercent) || inputs.addDiffPercent <= 0) {
+            errors['add-diff-percent'] = '加仓价差百分比必须是大于0的数字。';
+        }
+        // Validate tpPercent: Must be a positive number for take profit.
+        if (isNaN(inputs.tpPercent) || inputs.tpPercent <= 0) {
+            errors['tp-percent'] = '止盈百分比必须是大于0的数字。';
+        }
+        // Validate initialMargin: Must be a positive amount.
+        if (isNaN(inputs.initialMargin) || inputs.initialMargin <= 0) {
+            errors['initial-margin'] = '初始保证金必须是大于0的数字。';
+        }
+        // Validate addMarginBase: Must be a positive amount for additional margin.
+        if (isNaN(inputs.addMarginBase) || inputs.addMarginBase <= 0) {
+            errors['add-margin'] = '基础加仓保证金必须是大于0的数字。';
+        }
+        // Validate maxAdds: Cannot be negative; 0 is allowed (no additions).
+        if (isNaN(inputs.maxAdds) || inputs.maxAdds < 0) {
+            errors['max-adds'] = '最大加仓次数不能为负数。';
+        }
+        // Validate leverage: Must be at least 1.
+        if (isNaN(inputs.leverage) || inputs.leverage < 1) {
+            errors['leverage'] = '杠杆倍数必须是至少为1的数字。';
+        }
+        // Validate takerFee: Cannot be negative.
+        if (isNaN(inputs.takerFee) || inputs.takerFee < 0) {
+            errors['taker-fee'] = 'Taker 手续费率不能为负数。';
+        }
+        // Validate makerFee: Cannot be negative.
+        if (isNaN(inputs.makerFee) || inputs.makerFee < 0) {
+            errors['maker-fee'] = 'Maker 手续费率不能为负数。';
+        }
+        // Validate maintenanceMarginRate: Must be between 0 and 100.
+        if (isNaN(inputs.maintenanceMarginRate) || inputs.maintenanceMarginRate < 0 || inputs.maintenanceMarginRate > 100) {
+            errors['maintenance-margin-rate'] = '维持保证金率必须是0到100之间的数字。';
+        }
+        // Validate amountMultiplier: Must be positive for margin scaling.
+        if (isNaN(inputs.amountMultiplier) || inputs.amountMultiplier <= 0) {
+            errors['amount-multiplier'] = '加仓额倍数必须是大于0的数字。';
+        }
+        // Validate diffMultiplier: Must be positive for price difference scaling.
+        if (isNaN(inputs.diffMultiplier) || inputs.diffMultiplier <= 0) {
+            errors['diff-multiplier'] = '价差倍数必须是大于0的数字。';
+        }
+        return errors;
+    }
 
-        // --- 初始化变量 --- 
-        stepsTbody.innerHTML = ''; // 清空旧结果
-        let totalMargin = initialMargin;
-        let totalQuantity = (initialMargin * leverage) / initialPrice;
-        let totalValue = totalQuantity * initialPrice; // 初始总价值等于 初始保证金 * 杠杆
-        let currentAvgPrice = initialPrice;
-        let cumulativeDiffPercent = 0;
-        let lastAddPrice = initialPrice;
-        let lastTpProfit = 0;
+    /**
+     * Clears any previously displayed validation error messages from the DOM.
+     * This function finds all elements with the class 'error-message' and removes them.
+     */
+    function clearValidationErrors() {
+        const errorMessages = document.querySelectorAll('.error-message');
+        errorMessages.forEach(msgElement => msgElement.remove());
+    }
 
-        // --- 记录初始仓位 (序号 0) --- 
-        const initialQuantity = totalQuantity; // 在循环前获取初始数量
+    /**
+     * Displays validation errors in the DOM, positioning them near the respective input fields.
+     * @param {object} errors - An object where keys are input field IDs and values are the error messages.
+     *                        Example: `{'initial-price': 'Error message here'}`
+     */
+    function displayValidationErrors(errors) {
+        for (const fieldId in errors) {
+            const inputFieldElement = document.getElementById(fieldId);
+            if (inputFieldElement) {
+                // Find the parent '.form-group' to append the error message within the group
+                const parentFormGroup = inputFieldElement.closest('.form-group');
+                if (parentFormGroup) {
+                    const errorSpan = document.createElement('span');
+                    errorSpan.className = 'error-message'; // Assign class for styling
+                    errorSpan.textContent = errors[fieldId]; // Set the error text
+                    parentFormGroup.appendChild(errorSpan); // Add the error message to the DOM
+                }
+            }
+        }
+    }
+
+    /**
+     * Calculates details for the initial position (step 0).
+     * @param {object} inputs - The validated form inputs.
+     * @returns {object} Data for the initial step, including calculated values like quantity, TP price, etc.
+     */
+    /**
+     * Calculates the trading fee for a given quantity, price, and fee percentage.
+     * Fee = Quantity * Price * (FeePercent / 100).
+     * @param {number} quantity - The quantity of the asset being traded.
+     * @param {number} price - The price per unit of the asset.
+     * @param {number} feePercent - The fee percentage (e.g., 0.075 for 0.075%).
+     * @returns {number} The calculated trading fee. Returns 0 if inputs are invalid for fee calculation.
+     */
+    function calculateFee(quantity, price, feePercent) {
+        // Basic validation for fee calculation parameters
+        if (quantity <= 0 || price <= 0 || feePercent < 0) {
+            return 0; // No fee if quantity/price is zero/negative or feePercent is negative
+        }
+        return quantity * price * (feePercent / 100); // Standard fee calculation formula
+    }
+
+    /**
+     * Calculates all relevant details for the initial position (Step 0).
+     * This includes entry price, quantity, margin, opening fee, take profit price, and profit considering fees.
+     * @param {object} inputs - The validated form inputs object from `getFormInputs()`.
+     * @returns {object} An object containing all data for the initial step.
+     *                   Properties include: step, addPrice, addQuantity, addMargin, openingFee,
+     *                   accumulatedOpeningFees, unrealizedPnl, avgPrice, tpPrice, tpProfit,
+     *                   percentToTp, cumulativeDiffPercent.
+     */
+    function calculateInitialPosition(inputs) {
+        const { initialPrice, initialMargin, leverage, direction, tpPercent, takerFee } = inputs;
+
+        // Calculate initial quantity based on margin, leverage, and entry price
+        const initialQuantity = (initialMargin * leverage) / initialPrice;
+        // Calculate the take profit price for this initial position
         const initialTpPrice = initialPrice * (1 + (direction === 'long' ? tpPercent : -tpPercent) / 100);
-        const calculatedInitialTpProfit = initialQuantity * Math.abs(initialTpPrice - initialPrice);
+
+        // Calculate fees for opening this position and for closing it at the take profit price
+        const openingFee = calculateFee(initialQuantity, initialPrice, takerFee);
+        const closingFeeAtTp = calculateFee(initialQuantity, initialTpPrice, takerFee); // Assume taker fee for TP close for simplicity
+
+        // Calculate profit before any fees are deducted
+        const profitBeforeFees = initialQuantity * Math.abs(initialTpPrice - initialPrice);
+        // Calculate final take profit for this step, accounting for opening and closing fees
+        const calculatedInitialTpProfit = profitBeforeFees - openingFee - closingFeeAtTp;
+
         let initialPercentToTp = 0;
         if (initialPrice !== 0) {
-             initialPercentToTp = ((initialTpPrice - initialPrice) / initialPrice) * 100;
+            initialPercentToTp = ((initialTpPrice - initialPrice) / initialPrice) * 100;
         }
 
-        const initialRow = stepsTbody.insertRow();
-        initialRow.innerHTML = `
-            <td>0</td>
-            <td>${initialPrice.toFixed(6)}</td>
-            <td>${initialQuantity.toFixed(4)}</td>
-            <td>${initialMargin.toFixed(2)}</td>
-            <td>0.00</td> <!-- 初始未实现盈亏 -->
-            <td>${initialPrice.toFixed(6)}</td> <!-- 初始均价 -->
-            <td>${initialTpPrice.toFixed(6)}</td>
-            <td>${calculatedInitialTpProfit.toFixed(2)}</td>
-            <td>${initialPercentToTp.toFixed(2)}%</td>
-        `;
+        return {
+            step: 0,
+            addPrice: initialPrice,
+            addQuantity: initialQuantity,
+            addMargin: initialMargin,
+            openingFee: openingFee, // Store opening fee for this step
+            accumulatedOpeningFees: openingFee, // For initial step, it's just its own opening fee
+            unrealizedPnl: 0,
+            avgPrice: initialPrice,
+            tpPrice: initialTpPrice,
+            tpProfit: calculatedInitialTpProfit,
+            percentToTp: initialPercentToTp,
+            cumulativeDiffPercent: 0
+        };
+    }
 
-        // --- 循环计算加仓 --- 
-        for (let i = 1; i <= maxAdds; i++) {
-            // 计算本次加仓保证金
-            const currentAddMargin = addMarginBase * Math.pow(amountMultiplier, i - 1);
+    /**
+     * Adds a row to the results table in the DOM to display step data.
+     * @param {object} stepData - Data for the current step (either initial or additional).
+     * @param {boolean} [isInitialStep=false] - (Optional) Indicates if this is the initial step. Can be inferred from stepData.step.
+     */
+    function updateStepInDOM(stepData, isInitialStep = false) {
+        const row = stepsTbody.insertRow();
+        // Order of cells must match the table headers in index.html
+        //加仓序号 | 理论委托价 | 理论委托量 | 本次保证金 | 开仓手续费 | 本次未实现盈亏 | 加仓后均价 | 本次止盈价 | 本次止盈收益 | 距止盈需涨/跌 (%)
+        row.insertCell().textContent = stepData.step;
+        row.insertCell().textContent = stepData.addPrice.toFixed(6);
 
-            // 计算本次加仓触发价差百分比
-            const stepDiffPercent = addDiffPercent * Math.pow(diffMultiplier, i - 1);
-            cumulativeDiffPercent += stepDiffPercent;
+        const quantityCell = row.insertCell();
+        quantityCell.textContent = stepData.addQuantity.toFixed(4);
+        quantityCell.title = '根据保证金和杠杆计算得出'; // 理论委托量
 
-            // 计算本次理论委托价
-            let currentAddPrice;
-            if (direction === 'long') {
-                currentAddPrice = initialPrice * (1 - cumulativeDiffPercent / 100);
-            } else { // short
-                currentAddPrice = initialPrice * (1 + cumulativeDiffPercent / 100);
-            }
-            lastAddPrice = currentAddPrice; // 记录最后一次加仓价格
+        row.insertCell().textContent = stepData.addMargin.toFixed(2); // 本次保证金 (USDT)
 
-            // 价格不能小于等于0
-            if (currentAddPrice <= 0) {
-                 const row = stepsTbody.insertRow();
-                 row.innerHTML = `<td colspan="7" style="text-align:center; color: red;">错误：计算出的加仓价格 (${currentAddPrice.toFixed(8)}) 无效，停止计算后续加仓。</td>`;
-                 break; // 停止计算
-            }
+        const openingFeeCell = row.insertCell();
+        openingFeeCell.textContent = stepData.openingFee.toFixed(4);
+        openingFeeCell.title = '本次开仓或加仓所支付的预估手续费'; // 开仓手续费 (USDT)
 
-            // 计算本次加仓数量
-            const currentAddQuantity = (currentAddMargin * leverage) / currentAddPrice;
+        const unrealizedPnlCell = row.insertCell();
+        unrealizedPnlCell.textContent = stepData.unrealizedPnl.toFixed(2);
+        unrealizedPnlCell.title = '按本次加仓价计算，持仓对比当前均价的浮动盈亏'; // 本次未实现盈亏 (USDT)
 
-            // 更新累计值
-            totalMargin += currentAddMargin;
-            const previousTotalQuantity = totalQuantity;
-            totalQuantity += currentAddQuantity;
-            totalValue = (previousTotalQuantity * currentAvgPrice) + (currentAddQuantity * currentAddPrice);
-            currentAvgPrice = totalValue / totalQuantity;
+        const avgPriceCell = row.insertCell();
+        avgPriceCell.textContent = stepData.avgPrice.toFixed(6);
+        avgPriceCell.title = '所有已执行仓位的平均成本价'; // 加仓后均价 (USDT)
 
-            // 新增：计算本次加仓完成时的未实现盈亏
-            let stepUnrealizedPnl = 0;
-            if (direction === 'long') {
-                stepUnrealizedPnl = totalQuantity * (currentAddPrice - currentAvgPrice);
-            } else { // short
-                stepUnrealizedPnl = totalQuantity * (currentAvgPrice - currentAddPrice);
-            }
+        const tpPriceCell = row.insertCell();
+        tpPriceCell.textContent = stepData.tpPrice.toFixed(6);
+        tpPriceCell.title = '当前总持仓按此均价和止盈百分比计算出的止盈目标价格'; // 本次止盈价 (USDT)
 
-            // 计算本次止盈价
-            let currentTpPrice;
-            if (direction === 'long') {
-                currentTpPrice = currentAvgPrice * (1 + tpPercent / 100);
-            } else { // short
-                currentTpPrice = currentAvgPrice * (1 - tpPercent / 100);
-            }
+        const tpProfitCell = row.insertCell();
+        tpProfitCell.textContent = stepData.tpProfit.toFixed(2);
+        tpProfitCell.title = '若当前总持仓在此止盈价平仓的理论收益（已扣除所有累计开仓手续费和本次平仓手续费）'; // 本次止盈收益 (USDT)
 
-            // 计算本次止盈收益
-            const currentTpProfit = totalQuantity * Math.abs(currentTpPrice - currentAvgPrice);
-            lastTpProfit = currentTpProfit; // 记录最后一次止盈收益
+        const percentToTpCell = row.insertCell();
+        percentToTpCell.textContent = `${stepData.percentToTp.toFixed(2)}%`;
+        percentToTpCell.title = '从本次加仓价到本次止盈价所需的价格变动百分比'; // 距止盈需涨/跌 (%)
+    }
 
-            // 新增：计算距止盈需要的百分比 (基于加仓价)
-            let percentToTp = 0;
-            if (currentAddPrice !== 0) { 
-                percentToTp = ((currentTpPrice - currentAddPrice) / currentAddPrice) * 100;
-            }
+    /**
+     * Calculates details for one additional margin call (a single step in the Martingale sequence).
+     * @param {object} inputs - The validated form inputs (e.g., initialPrice, addDiffPercent, etc.).
+     * @param {object} previousStepCumulativeData - Cumulative data from the position's state *before* this current step
+     *                                            (e.g., totalMargin, totalQuantity, avgPrice, accumulatedOpeningFees).
+     * @param {number} stepNumber - The current additional step number (e.g., 1 for the first add, 2 for the second, etc.).
+     * @returns {object|null} Data for the new step, including calculated prices, PNL, new cumulative totals, fees etc.
+     *                        Returns null if calculation is not possible (e.g., calculated add price is <= 0).
+     */
+    function calculateAdditionalPositionStep(inputs, previousStepCumulativeData, stepNumber) {
+        const { initialPrice, addDiffPercent, tpPercent, addMarginBase, leverage, amountMultiplier, diffMultiplier, direction, takerFee } = inputs;
 
-            // --- 显示本次加仓结果 (修改小数位数) --- 
-            const row = stepsTbody.insertRow();
-            row.innerHTML = `
-                <td>${i}</td>
-                <td>${currentAddPrice.toFixed(6)}</td>
-                <td>${currentAddQuantity.toFixed(4)}</td>
-                <td>${currentAddMargin.toFixed(2)}</td>
-                <td>${stepUnrealizedPnl.toFixed(2)}</td>
-                <td>${currentAvgPrice.toFixed(6)}</td>
-                <td>${currentTpPrice.toFixed(6)}</td>
-                <td>${currentTpProfit.toFixed(2)}</td>
-                <td>${percentToTp.toFixed(2)}%</td>
-            `;
+        // Calculate margin for this specific additional step using the amount multiplier
+        const currentAddMargin = addMarginBase * Math.pow(amountMultiplier, stepNumber - 1);
+
+        // Calculate the target cumulative percentage difference from the initial price to trigger this additional step
+        // This loop recalculates the target cumulative difference for the *current* step number using the diff multiplier.
+        let cumulativeTargetDiffPercent = 0;
+        for (let k = 1; k <= stepNumber; k++) { // k goes from 1 up to current stepNumber
+            cumulativeTargetDiffPercent += addDiffPercent * Math.pow(diffMultiplier, k - 1);
         }
 
-        // --- 计算最终概要 --- 
+        // Calculate theoretical entry price for this additional step based on the cumulative difference
+        let currentAddPrice; // Price at which this additional margin is deployed
+        if (direction === 'long') {
+            currentAddPrice = initialPrice * (1 - cumulativeTargetDiffPercent / 100);
+        } else { // short
+            currentAddPrice = initialPrice * (1 + cumulativeTargetDiffPercent / 100);
+        }
+
+        // Validate calculated price. If it's zero or negative, stop further calculations for this path.
+        if (currentAddPrice <= 0) {
+            const errorRow = stepsTbody.insertRow();
+            errorRow.innerHTML = `<td colspan="10" style="text-align:center; color: red;">错误：计算出的加仓价格 (${currentAddPrice.toFixed(8)}) 无效，停止计算后续加仓。</td>`; // Colspan matches table columns
+            return null; // Signal that this step failed
+        }
+
+        // Calculate quantity for this additional step
+        const currentAddQuantity = (currentAddMargin * leverage) / currentAddPrice;
+
+        // Update cumulative values by incorporating this additional step
+        const newTotalMargin = previousStepCumulativeData.totalMargin + currentAddMargin;
+        const newTotalQuantity = previousStepCumulativeData.totalQuantity + currentAddQuantity;
+
+        // Calculate new total value of all assets in the position
+        const newTotalValue = (previousStepCumulativeData.totalQuantity * previousStepCumulativeData.avgPrice) + (currentAddQuantity * currentAddPrice);
+        // Calculate the new average entry price for the entire position
+        const newCurrentAvgPrice = newTotalValue / newTotalQuantity;
+
+        // Calculate unrealized PNL at the moment this additional position is opened.
+        // This is based on the difference between the current add price and the new average price.
+        let stepUnrealizedPnl = 0;
+        if (direction === 'long') {
+            stepUnrealizedPnl = newTotalQuantity * (currentAddPrice - newCurrentAvgPrice); // For long, PNL is (current price - avg price) * quantity
+        } else { // short
+            stepUnrealizedPnl = newTotalQuantity * (newCurrentAvgPrice - currentAddPrice); // For short, PNL is (avg price - current price) * quantity
+        }
+
+        // Calculate the take profit price if the entire position (up to this step) were to be closed
+        let currentTpPriceForStep;
+        if (direction === 'long') {
+            currentTpPriceForStep = newCurrentAvgPrice * (1 + tpPercent / 100);
+        } else { // short
+            currentTpPriceForStep = newCurrentAvgPrice * (1 - tpPercent / 100);
+        }
+
+        // Calculate fees for this specific additional step
+        const currentOpeningFee = calculateFee(currentAddQuantity, currentAddPrice, takerFee);
+        // Accumulate opening fees from all steps so far
+        const accumulatedOpeningFees = previousStepCumulativeData.accumulatedOpeningFees + currentOpeningFee;
+
+        // Calculate profit before any fees for the entire position up to this step
+        const profitBeforeFees = newTotalQuantity * Math.abs(currentTpPriceForStep - newCurrentAvgPrice);
+        // Calculate closing fee for the entire position if TP is hit at this stage
+        const closingFeeForTotalPositionAtTp = calculateFee(newTotalQuantity, currentTpPriceForStep, takerFee);
+        // Calculate final take profit for this step, accounting for all opening fees and the closing fee for the total position
+        const currentTpProfitWithFees = profitBeforeFees - accumulatedOpeningFees - closingFeeForTotalPositionAtTp;
+
+        // Calculate percentage change required from current add price to the new TP price
+        let percentToTp = 0;
+        if (currentAddPrice !== 0) { // Avoid division by zero
+            percentToTp = ((currentTpPriceForStep - currentAddPrice) / currentAddPrice) * 100;
+        }
+
+        return {
+            step: stepNumber,
+            addPrice: currentAddPrice,
+            addQuantity: currentAddQuantity,
+            addMargin: currentAddMargin,
+            openingFee: currentOpeningFee, // Store opening fee for this step
+            accumulatedOpeningFees: accumulatedOpeningFees, // Pass on cumulative opening fees
+            unrealizedPnl: stepUnrealizedPnl,
+            avgPrice: newCurrentAvgPrice,
+            tpPrice: currentTpPriceForStep, // Use the locally calculated TP price for this step's context
+            tpProfit: currentTpProfitWithFees, // Fee-adjusted profit for this step
+            percentToTp: percentToTp,
+            totalMargin: newTotalMargin,
+            totalQuantity: newTotalQuantity,
+            cumulativeDiffPercent: cumulativeTargetDiffPercent
+        };
+    }
+
+    /**
+     * Calculates the final summary figures after all Martingale steps are processed.
+     * @param {object} inputs - The validated form inputs.
+     * @param {Array<object>} allStepsData - Array containing data objects from all processed steps (initial + additions).
+     * @param {number} finalCumulativeAvgPrice - The final average price of the total position after all steps.
+     * @param {number} finalCumulativeTotalMargin - The total margin invested across all steps.
+     * @param {number} priceOfLastTrade - The price at which the last trade (initial or an addition) was executed. This is used for PNL calculation.
+     * @param {number} finalCumulativeTotalQuantity - The total quantity of the asset held after all steps.
+     * @returns {object} An object containing all summary figures (e.g., PNL, liquidation price, etc.).
+     */
+    function calculateSummary(inputs, allStepsData, finalCumulativeAvgPrice, finalCumulativeTotalMargin, priceOfLastTrade, finalCumulativeTotalQuantity) {
+        const { direction, initialPrice, takerFee, tpPercent, maintenanceMarginRate } = inputs;
         let finalUnrealizedPnl = 0;
-        let estimatedLiqPrice = NaN; // 初始化爆仓价
+        let calculatedLiqPrice = NaN;
+        let priceDiffFromStartToLastAddPercent = 0;
+        let liqPriceDiffFromAvgPercent = NaN;
+        const mmrDecimal = maintenanceMarginRate / 100; // Convert MMR from percentage to decimal
 
-        if (totalQuantity > 0) { // 确保有持仓
-             if (maxAdds > 0) { // 确保有加仓发生才能计算最后加仓时的未实现盈亏
-                 if (direction === 'long') {
-                     finalUnrealizedPnl = totalQuantity * (lastAddPrice - currentAvgPrice);
-                 } else { // short
-                     finalUnrealizedPnl = totalQuantity * (currentAvgPrice - lastAddPrice);
-                 }
-             }
+        if (finalCumulativeTotalQuantity > 0) {
+            // Calculate Final Unrealized PNL based on the last trade's price and the final average price
+            if (allStepsData.length > 0) {
+                if (direction === 'long') {
+                    finalUnrealizedPnl = finalCumulativeTotalQuantity * (priceOfLastTrade - finalCumulativeAvgPrice);
+                } else {
+                    finalUnrealizedPnl = finalCumulativeTotalQuantity * (finalCumulativeAvgPrice - priceOfLastTrade);
+                }
+            }
 
-            // 计算简化爆仓价
-             if (direction === 'long') {
-                 // 估算爆仓价 ≈ 平均成本 - (总保证金 / 总数量)
-                 estimatedLiqPrice = currentAvgPrice - (totalMargin / totalQuantity);
-             } else { // short
-                 // 估算爆仓价 ≈ 平均成本 + (总保证金 / 总数量)
-                 estimatedLiqPrice = currentAvgPrice + (totalMargin / totalQuantity);
-             }
+            // Liquidation Price Calculation using Maintenance Margin Rate
+            if (direction === 'long') {
+                // Formula: AvgEntry * (1 + MMR) - (TotalUserMargin / TotalQuantity)
+                calculatedLiqPrice = finalCumulativeAvgPrice * (1 + mmrDecimal) - (finalCumulativeTotalMargin / finalCumulativeTotalQuantity);
+            } else { // short
+                // Formula: AvgEntry * (1 - MMR) + (TotalUserMargin / TotalQuantity)
+                calculatedLiqPrice = finalCumulativeAvgPrice * (1 - mmrDecimal) + (finalCumulativeTotalMargin / finalCumulativeTotalQuantity);
+            }
+
+            // Calculate percentage difference from final average price to liquidation price
+            if (finalCumulativeAvgPrice !== 0 && !isNaN(calculatedLiqPrice) && calculatedLiqPrice > 0) {
+                const diffToLiq = calculatedLiqPrice - finalCumulativeAvgPrice;
+                liqPriceDiffFromAvgPercent = (diffToLiq / finalCumulativeAvgPrice) * 100;
+            } else if (calculatedLiqPrice <= 0) { // If liquidation price is zero or negative
+                 liqPriceDiffFromAvgPercent = direction === 'long' ? -100 : 100; // Represents immediate or past liquidation
+            }
         }
 
-        // --- 显示最终概要 (修改小数位数) --- 
-        finalAvgPriceSpan.textContent = totalQuantity > 0 ? currentAvgPrice.toFixed(6) : initialPrice.toFixed(6);
-        totalMarginSpan.textContent = totalMargin.toFixed(2);
-        finalUnrealizedPnlSpan.textContent = finalUnrealizedPnl.toFixed(2);
+        // Calculate percentage difference between the initial price and the price of the last actual addition
+        const actualAddsCount = allStepsData.filter(s => s.step > 0).length;
+        if (actualAddsCount > 0 && initialPrice !== 0 && priceOfLastTrade !== initialPrice) {
+            priceDiffFromStartToLastAddPercent = ((priceOfLastTrade - initialPrice) / initialPrice) * 100;
+        }
 
-        // 计算并显示首尾价差百分比
-        let priceDiffPercentValue = 0;
-        if (maxAdds > 0 && initialPrice !== 0 && lastAddPrice !== initialPrice) { // 确保有加仓且价格不同
-            priceDiffPercentValue = ((lastAddPrice - initialPrice) / initialPrice) * 100;
-            priceDiffPercentSpan.textContent = `${priceDiffPercentValue.toFixed(2)}%`;
-        } else if (maxAdds <= 0) {
+        // Calculate final Take Profit amount, considering all accumulated opening fees and the fee for closing the entire position
+        let finalTpProfitWithFees = 0;
+        if (finalCumulativeTotalQuantity > 0) {
+            // Sum of all opening fees from each step
+            const totalAccumulatedOpeningFees = allStepsData.reduce((sum, step) => sum + (step.openingFee || 0), 0);
+            // Determine the TP price for the final average entry price
+            const finalTpPriceForSummary = finalCumulativeAvgPrice * (1 + (direction === 'long' ? tpPercent : -tpPercent) / 100);
+            // Calculate the fee to close the entire position at the final TP price
+            const finalClosingFee = calculateFee(finalCumulativeTotalQuantity, finalTpPriceForSummary, takerFee);
+            // Calculate profit before any fees at the summary level
+            const profitBeforeFeesAtSummary = finalCumulativeTotalQuantity * Math.abs(finalTpPriceForSummary - finalCumulativeAvgPrice);
+            // Final TP profit after all fees
+            finalTpProfitWithFees = profitBeforeFeesAtSummary - totalAccumulatedOpeningFees - finalClosingFee;
+        } else {
+            // If there's no quantity (e.g. only initial step failed or invalid inputs),
+            // attempt to use the initial step's TP profit (which is already fee-adjusted).
+            const initialStepData = allStepsData.find(step => step.step === 0);
+            if (initialStepData) {
+                finalTpProfitWithFees = initialStepData.tpProfit;
+            }
+        }
+
+        return {
+            finalAvgPrice: finalCumulativeTotalQuantity > 0 ? finalCumulativeAvgPrice : initialPrice,
+            totalMargin: finalCumulativeTotalMargin, // Total margin input by user
+            finalUnrealizedPnl: finalUnrealizedPnl, // PNL at the point of the last trade
+            estimatedLiqPrice: calculatedLiqPrice, // More accurate liquidation price
+            priceDiffPercentValue: priceDiffFromStartToLastAddPercent, // Price change from first to last entry
+            liqDiffPercentValue: liqPriceDiffFromAvgPercent, // % change from avg price to liq price
+            finalTpProfit: finalTpProfitWithFees, // Overall TP profit after all fees
+            hasTrades: finalCumulativeTotalQuantity > 0, // Flag if any position was effectively opened
+            hasAdds: actualAddsCount > 0 // Flag if any additional positions were made
+        };
+    }
+
+    /**
+     * Updates the summary section in the DOM with calculated Martingale figures.
+     * Also sets tooltips for each summary item for better user understanding.
+     * @param {object} summaryData - An object containing all summary figures from `calculateSummary`.
+     */
+    function updateSummaryInDOM(summaryData) {
+        const initialPriceFromForm = parseFloat(document.getElementById('initial-price').value) || 0;
+
+        // Display final average price
+        finalAvgPriceSpan.textContent = summaryData.hasTrades ? summaryData.finalAvgPrice.toFixed(6) : initialPriceFromForm.toFixed(6);
+        finalAvgPriceSpan.title = '所有加仓完成后，最终的总持仓平均成本价';
+
+        // Display total margin
+        totalMarginSpan.textContent = summaryData.totalMargin.toFixed(2);
+        totalMarginSpan.title = '用户为所有仓位投入的总保证金（不含手续费）';
+
+        // Display final unrealized P&L at the moment of the last trade
+        finalUnrealizedPnlSpan.textContent = summaryData.finalUnrealizedPnl.toFixed(2);
+        finalUnrealizedPnlSpan.title = '最后一次加仓完成时，总持仓相对其最终均价的未实现盈亏';
+
+        // Display percentage difference between first and last entry price
+        if (summaryData.hasAdds) {
+            priceDiffPercentSpan.textContent = `${summaryData.priceDiffPercentValue.toFixed(2)}%`;
+        } else if (parseInt(document.getElementById('max-adds').value) <= 0) {
              priceDiffPercentSpan.textContent = 'N/A (无加仓)';
         } else {
-            priceDiffPercentSpan.textContent = '0.00%'; // 加仓了但价格未变（理论上不可能，除非差价为0）
+            priceDiffPercentSpan.textContent = '0.00% (无实际加仓)';
         }
+        priceDiffPercentSpan.title = '从第一次开仓价格到最后一次加仓价格的价格变动百分比';
 
-        if (!isNaN(estimatedLiqPrice) && estimatedLiqPrice > 0) {
-             liquidationPriceSpan.textContent = `约 ${estimatedLiqPrice.toFixed(6)} USDT (简化估算)`;
-             liquidationPriceSpan.style.color = '#e74c3c';
+        // Display estimated liquidation price and its difference from average price
+        if (summaryData.hasTrades && !isNaN(summaryData.estimatedLiqPrice)) {
+            if (summaryData.estimatedLiqPrice > 0) {
+                liquidationPriceSpan.textContent = `${summaryData.estimatedLiqPrice.toFixed(6)} USDT`; // Text updated to reflect more precise calculation
+                liquidationPriceSpan.style.color = '#e74c3c';
+            } else {
+                liquidationPriceSpan.textContent = `已低于或等于0`; // Indicates liquidation price is at or below zero
+                liquidationPriceSpan.style.color = '#e74c3c';
+            }
 
-            // 新增：计算并显示距爆仓价差百分比
-            if (currentAvgPrice !== 0) {
-                const priceDiffToLiq = estimatedLiqPrice - currentAvgPrice;
-                const liqDiffPercentValue = (priceDiffToLiq / currentAvgPrice) * 100;
-                liqDiffPercentSpan.textContent = `${liqDiffPercentValue.toFixed(2)}%`;
-                // 根据做多做空调整颜色，通常爆仓价在不利方向
-                liqDiffPercentSpan.style.color = (direction === 'long' && liqDiffPercentValue < 0) || (direction === 'short' && liqDiffPercentValue > 0) ? '#e74c3c' : '#2ecc71';
+            if (!isNaN(summaryData.liqDiffPercentValue)) {
+                liqDiffPercentSpan.textContent = `${summaryData.liqDiffPercentValue.toFixed(2)}%`;
+                const direction = document.getElementById('direction').value;
+                // Color indicates if liquidation is favorable (further away, green) or unfavorable (closer, red)
+                liqDiffPercentSpan.style.color = (direction === 'long' && summaryData.liqDiffPercentValue < 0) || (direction === 'short' && summaryData.liqDiffPercentValue > 0) ? '#e74c3c' : '#2ecc71';
             } else {
                 liqDiffPercentSpan.textContent = 'N/A';
                 liqDiffPercentSpan.style.color = '#777';
             }
-
-        } else if (!isNaN(estimatedLiqPrice) && estimatedLiqPrice <= 0) {
-             liquidationPriceSpan.textContent = `理论上已低于0 (简化估算)`;
-             liquidationPriceSpan.style.color = '#e74c3c';
-            liqDiffPercentSpan.textContent = 'N/A (爆仓价无效)';
-            liqDiffPercentSpan.style.color = '#777';
         } else {
-             liquidationPriceSpan.textContent = '无法计算 (无持仓)';
-             liquidationPriceSpan.style.color = '#777'; // 恢复默认颜色
+            liquidationPriceSpan.textContent = '无法计算 (无持仓)';
+            liquidationPriceSpan.style.color = '#777';
             liqDiffPercentSpan.textContent = 'N/A';
             liqDiffPercentSpan.style.color = '#777';
         }
-        finalTpProfitSpan.textContent = maxAdds > 0 ? lastTpProfit.toFixed(2) : calculatedInitialTpProfit.toFixed(2);
+        liquidationPriceSpan.title = '根据总保证金、最终均价及维持保证金率估算的理论爆仓价格（已考虑维持保证金率，但不含未实现盈亏和额外费用影响）';
+        liqDiffPercentSpan.title = '从最终持仓均价到理论爆仓价格所需的价格变动百分比';
 
-        resultsContainer.style.display = 'block'; // 显示结果区域
-         // 平滑滚动到结果区域
-        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+        // Display final take profit theoretical earnings after all fees
+        finalTpProfitSpan.textContent = summaryData.finalTpProfit.toFixed(2);
+        finalTpProfitSpan.title = '若最终总持仓在最终止盈价平仓的理论总收益（已扣除所有开仓手续费和平仓手续费）';
     }
 
-    // --- 新增：导出图片功能 --- 
+    /**
+     * Main function to trigger the Martingale calculation process.
+     * It orchestrates getting inputs, validation, step-by-step calculation for initial and additional positions,
+     * DOM updates for each step, and final summary calculation and display.
+     * Handles error display and clearing for user inputs.
+     */
+    function calculateMartingale() {
+        clearValidationErrors(); // 1. Clear any old error messages
+        const inputs = getFormInputs(); // 2. Get all form inputs
+        const validationErrors = validateInputs(inputs); // 3. Validate inputs
+
+        // If there are validation errors, display them and stop processing
+        if (Object.keys(validationErrors).length > 0) {
+            displayValidationErrors(validationErrors);
+            resultsContainer.style.display = 'none'; // Hide results section if inputs are invalid
+            return;
+        }
+
+        stepsTbody.innerHTML = ''; // Clear previous results from the steps table
+        const allStepsData = []; // Array to store data objects for each step (initial and additions)
+
+        // --- Initial Position (Step 0) ---
+        const initialStepData = calculateInitialPosition(inputs); // Calculate details for the first position
+        updateStepInDOM(initialStepData, true); // Display initial step in the table
+        allStepsData.push(initialStepData); // Store data for the initial step
+
+        // Initialize cumulative tracking variables with data from the initial step.
+        // These variables will be updated iteratively as each additional position is calculated.
+        let currentCumulativeTotalMargin = initialStepData.addMargin;
+        let currentCumulativeTotalQuantity = initialStepData.addQuantity;
+        let currentCumulativeAvgPrice = initialStepData.avgPrice;
+        let priceOfLastTrade = initialStepData.addPrice; // Tracks the entry price of the most recent trade
+        let currentAccumulatedOpeningFees = initialStepData.accumulatedOpeningFees; // Tracks sum of opening fees
+
+        // --- Loop for Additional Positions (Steps 1 to maxAdds) ---
+        for (let i = 1; i <= inputs.maxAdds; i++) {
+            // Prepare data bundle representing the position's state *before* this current additional step
+            const positionStateBeforeThisAdd = {
+                avgPrice: currentCumulativeAvgPrice,
+                totalQuantity: currentCumulativeTotalQuantity,
+                totalMargin: currentCumulativeTotalMargin,
+                accumulatedOpeningFees: currentAccumulatedOpeningFees
+            };
+
+            // Calculate details for the current additional position step
+            const additionalStepData = calculateAdditionalPositionStep(inputs, positionStateBeforeThisAdd, i);
+
+            if (!additionalStepData) {
+                // If calculation failed (e.g., invalid price), an error message is shown by calculateAdditionalPositionStep.
+                // Stop processing further additions.
+                break;
+            }
+
+            updateStepInDOM(additionalStepData, false); // Display this additional step in the table
+            allStepsData.push(additionalStepData); // Store this step's data
+
+            // Update cumulative tracking variables with results from the current additional step
+            currentCumulativeTotalMargin = additionalStepData.totalMargin;
+            currentCumulativeTotalQuantity = additionalStepData.totalQuantity;
+            currentCumulativeAvgPrice = additionalStepData.avgPrice;
+            priceOfLastTrade = additionalStepData.addPrice;
+            currentAccumulatedOpeningFees = additionalStepData.accumulatedOpeningFees;
+        }
+
+        // --- Final Summary Calculation ---
+        // If no actual margin additions were made (only initial position exists, or maxAdds was 0),
+        // the 'priceOfLastTrade' for summary PNL should be the initial price to reflect PNL against initial entry.
+        if (allStepsData.filter(s => s.step > 0).length === 0) {
+            priceOfLastTrade = inputs.initialPrice;
+        }
+
+        // Calculate all final summary figures based on the complete set of processed steps
+        const summaryData = calculateSummary(
+            inputs,
+            allStepsData,
+            currentCumulativeAvgPrice,
+            currentCumulativeTotalMargin,
+            priceOfLastTrade,
+            currentCumulativeTotalQuantity
+        );
+        updateSummaryInDOM(summaryData); // Display these summary figures in the DOM
+
+        resultsContainer.style.display = 'block'; // Make the results section visible
+        resultsContainer.scrollIntoView({ behavior: 'smooth' }); // Smoothly scroll to the results
+    }
+
+    // --- Export to Image Functionality ---
     const exportButton = document.getElementById('export-image-btn');
+    /**
+     * Handles the "Export to Image" button click event.
+     * Captures the content of the '.calculator-container' element using the html2canvas library
+     * and initiates a download of the captured image as a PNG file.
+     * Generates a dynamic filename based on current calculator inputs for easy identification.
+     */
     exportButton.addEventListener('click', () => {
-        const elementToCapture = document.querySelector('.calculator-container'); // 或者更精确的元素
+        const elementToCapture = document.querySelector('.calculator-container');
         if (!elementToCapture) {
             alert('无法找到要导出的元素。');
             return;
         }
 
-        // 确保结果是可见的，否则图片可能不完整
         const resultsAreVisible = resultsContainer.style.display === 'block';
         if (!resultsAreVisible) {
             alert('请先进行计算，使结果可见后再导出。');
             return;
         }
 
-        // 使用 html2canvas
         html2canvas(elementToCapture, {
-            useCORS: true, // 如果有跨域图片，尝试使用
-            // scale: window.devicePixelRatio, // 可以提高清晰度，但文件会变大
-            logging: true, // 开启日志，方便调试
-            onclone: (document) => {
-                // 可以在克隆的文档上做一些临时的样式修改，比如确保所有内容都可见
-                // 例如，如果结果区域有自己的滚动条，可能需要临时移除
+            useCORS: true,
+            logging: true,
+            onclone: (clonedDocument) => {
+                // Callback executed after cloning the DOM, before rendering.
+                // Can be used for temporary modifications to the cloned DOM for the screenshot.
             }
         }).then(canvas => {
-            // --- 新增：构建动态文件名 --- 
-            const direction = document.getElementById('direction').value;
-            const initialPrice = parseFloat(document.getElementById('initial-price').value);
-            const addDiffPercent = parseFloat(document.getElementById('add-diff-percent').value);
-            const tpPercent = parseFloat(document.getElementById('tp-percent').value);
-            // const initialMargin = parseFloat(document.getElementById('initial-margin').value); // 文件名通常不包含保证金
-            // const addMarginBase = parseFloat(document.getElementById('add-margin').value);
-            const maxAdds = parseInt(document.getElementById('max-adds').value);
-            const leverage = parseFloat(document.getElementById('leverage').value);
-            const amountMultiplier = parseFloat(document.getElementById('amount-multiplier').value);
-            const diffMultiplier = parseFloat(document.getElementById('diff-multiplier').value);
+            const inputsForFilename = getFormInputs();
 
-            // 格式化文件名中的数值，保留一定小数位或取整
-            const formatNum = (num, decimals = 2) => isNaN(num) ? 'NaN' : num.toFixed(decimals);
-            const formatInt = (num) => isNaN(num) ? 'NaN' : parseInt(num);
+            const formatNumForFilename = (num, decimals = 2) => (isNaN(Number(num)) ? 'NaN' : Number(num).toFixed(decimals));
+            const formatIntForFilename = (num) => (isNaN(parseInt(num)) ? 'NaN' : parseInt(num));
 
-            // 拼接文件名 (示例，可以根据需要调整)
-            const filename = `Martingale_${direction === 'long' ? 'Long' : 'Short'}` +
-                             `_P${formatNum(initialPrice, 6)}` +
-                             `_Diff${formatNum(addDiffPercent)}` +
-                             `_TP${formatNum(tpPercent)}` +
-                             `_N${formatInt(maxAdds)}` +
-                             `_L${formatInt(leverage)}x` +
-                             `_AM${formatNum(amountMultiplier)}` +
-                             `_DM${formatNum(diffMultiplier)}` +
-                             `.png`;
-            // 替换可能存在的文件名非法字符 (虽然这里主要是数字和下划线，但做个保险)
+            // Construct filename with key parameters
+            const filenameParts = [
+                'Martingale',
+                inputsForFilename.direction === 'long' ? 'Long' : 'Short',
+                `P${formatNumForFilename(inputsForFilename.initialPrice, 6)}`,
+                `Diff${formatNumForFilename(inputsForFilename.addDiffPercent)}`,
+                `TP${formatNumForFilename(inputsForFilename.tpPercent)}`,
+                `N${formatIntForFilename(inputsForFilename.maxAdds)}`,
+                `L${formatIntForFilename(inputsForFilename.leverage)}x`,
+                `TF${formatNumForFilename(inputsForFilename.takerFee, 3)}`,
+                `MF${formatNumForFilename(inputsForFilename.makerFee, 3)}`,
+                `MMR${formatNumForFilename(inputsForFilename.maintenanceMarginRate, 1)}`,
+                `AM${formatNumForFilename(inputsForFilename.amountMultiplier)}`,
+                `DM${formatNumForFilename(inputsForFilename.diffMultiplier)}`
+            ];
+            const filename = filenameParts.join('_') + '.png';
+
             const safeFilename = filename.replace(/[\/\\:*?"<>|]/g, '_');
 
-            // 创建一个链接元素
             const link = document.createElement('a');
-            // 修改：使用动态文件名
             link.download = safeFilename; 
             link.href = canvas.toDataURL('image/png');
             
-            // 触发下载
-            document.body.appendChild(link); // 需要将链接添加到DOM中才能在某些浏览器中工作
+            document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link); // 清理
+            document.body.removeChild(link);
 
         }).catch(err => {
             console.error('导出图片失败:', err);
@@ -295,4 +668,4 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-}); 
+});
