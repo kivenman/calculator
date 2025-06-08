@@ -55,10 +55,12 @@ document.addEventListener('DOMContentLoaded', () => {
             maxAdds: parseInt(document.getElementById('max-adds').value), // Maximum number of times to add to the position
             leverage: parseFloat(document.getElementById('leverage').value), // Leverage multiplier
             takerFee: parseFloat(document.getElementById('taker-fee').value), // Taker fee percentage (e.g., 0.075 for 0.075%)
-            makerFee: parseFloat(document.getElementById('maker-fee').value), // Maker fee percentage (currently primarily using taker for TP calculations)
-            maintenanceMarginRate: parseFloat(document.getElementById('maintenance-margin-rate').value), // Maintenance Margin Rate percentage for liquidation price calculation
-            amountMultiplier: parseFloat(document.getElementById('amount-multiplier').value), // Multiplier for the margin of subsequent additional orders
-            diffMultiplier: parseFloat(document.getElementById('diff-multiplier').value) // Multiplier for the price difference percentage of subsequent additional orders
+            makerFee: parseFloat(document.getElementById('maker-fee').value),
+            maintenanceMarginRate: parseFloat(document.getElementById('maintenance-margin-rate').value),
+            fundingRate: parseFloat(document.getElementById('funding-rate').value), // Estimated funding rate per settlement
+            fundingSettlements: parseInt(document.getElementById('funding-settlements').value), // Estimated total number of funding settlements
+            amountMultiplier: parseFloat(document.getElementById('amount-multiplier').value),
+            diffMultiplier: parseFloat(document.getElementById('diff-multiplier').value)
         };
     }
 
@@ -110,6 +112,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Validate maintenanceMarginRate: Must be between 0 and 100.
         if (isNaN(inputs.maintenanceMarginRate) || inputs.maintenanceMarginRate < 0 || inputs.maintenanceMarginRate > 100) {
             errors['maintenance-margin-rate'] = '维持保证金率必须是0到100之间的数字。';
+        }
+        // Validate fundingRate: Can be any number (positive, negative, or zero).
+        if (isNaN(inputs.fundingRate)) {
+            errors['funding-rate'] = '预估资金费率必须是一个数字。';
+        }
+        // Validate fundingSettlements: Must be a non-negative integer.
+        if (isNaN(inputs.fundingSettlements) || inputs.fundingSettlements < 0 || !Number.isInteger(inputs.fundingSettlements)) {
+            errors['funding-settlements'] = '预估结算次数必须是非负整数。';
         }
         // Validate amountMultiplier: Must be positive for margin scaling.
         if (isNaN(inputs.amountMultiplier) || inputs.amountMultiplier <= 0) {
@@ -180,24 +190,26 @@ document.addEventListener('DOMContentLoaded', () => {
      * @returns {object} An object containing all data for the initial step.
      *                   Properties include: step, addPrice, addQuantity, addMargin, openingFee,
      *                   accumulatedOpeningFees, unrealizedPnl, avgPrice, tpPrice, tpProfit,
-     *                   percentToTp, cumulativeDiffPercent.
+     *                   percentToTp, cumulativeDiffPercent, stepFundingCost.
      */
     function calculateInitialPosition(inputs) {
-        const { initialPrice, initialMargin, leverage, direction, tpPercent, takerFee } = inputs;
+        const { initialPrice, initialMargin, leverage, direction, tpPercent, takerFee, fundingRate, fundingSettlements, maxAdds } = inputs;
 
-        // Calculate initial quantity based on margin, leverage, and entry price
         const initialQuantity = (initialMargin * leverage) / initialPrice;
-        // Calculate the take profit price for this initial position
         const initialTpPrice = initialPrice * (1 + (direction === 'long' ? tpPercent : -tpPercent) / 100);
 
-        // Calculate fees for opening this position and for closing it at the take profit price
         const openingFee = calculateFee(initialQuantity, initialPrice, takerFee);
-        const closingFeeAtTp = calculateFee(initialQuantity, initialTpPrice, takerFee); // Assume taker fee for TP close for simplicity
+        const closingFeeAtTp = calculateFee(initialQuantity, initialTpPrice, takerFee);
 
-        // Calculate profit before any fees are deducted
-        const profitBeforeFees = initialQuantity * Math.abs(initialTpPrice - initialPrice);
-        // Calculate final take profit for this step, accounting for opening and closing fees
-        const calculatedInitialTpProfit = profitBeforeFees - openingFee - closingFeeAtTp;
+        const profitBeforeTradingFees = initialQuantity * Math.abs(initialTpPrice - initialPrice);
+        let calculatedInitialTpProfit = profitBeforeTradingFees - openingFee - closingFeeAtTp;
+
+        // Calculate funding cost for this step
+        // Distribute total estimated settlements across the initial position and all potential add positions
+        const fundingEventsPerVirtualStep = (maxAdds + 1) > 0 ? fundingSettlements / (maxAdds + 1) : 0;
+        const initialPositionValue = initialQuantity * initialPrice;
+        const stepFundingCost = initialPositionValue * (fundingRate / 100) * fundingEventsPerVirtualStep;
+        calculatedInitialTpProfit -= stepFundingCost; // Subtract funding cost from TP profit
 
         let initialPercentToTp = 0;
         if (initialPrice !== 0) {
@@ -209,8 +221,9 @@ document.addEventListener('DOMContentLoaded', () => {
             addPrice: initialPrice,
             addQuantity: initialQuantity,
             addMargin: initialMargin,
-            openingFee: openingFee, // Store opening fee for this step
-            accumulatedOpeningFees: openingFee, // For initial step, it's just its own opening fee
+            openingFee: openingFee,
+            accumulatedOpeningFees: openingFee,
+            stepFundingCost: stepFundingCost, // Store funding cost for this step
             unrealizedPnl: 0,
             avgPrice: initialPrice,
             tpPrice: initialTpPrice,
@@ -256,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tpProfitCell = row.insertCell();
         tpProfitCell.textContent = stepData.tpProfit.toFixed(2);
-        tpProfitCell.title = '若当前总持仓在此止盈价平仓的理论收益（已扣除所有累计开仓手续费和本次平仓手续费）'; // 本次止盈收益 (USDT)
+        tpProfitCell.title = '若当前总持仓在此止盈价平仓的理论收益（已扣除所有累计开仓手续费、本次平仓手续费及本阶段预估资金费用）';
 
         const percentToTpCell = row.insertCell();
         percentToTpCell.textContent = `${stepData.percentToTp.toFixed(2)}%`;
@@ -273,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
      *                        Returns null if calculation is not possible (e.g., calculated add price is <= 0).
      */
     function calculateAdditionalPositionStep(inputs, previousStepCumulativeData, stepNumber) {
-        const { initialPrice, addDiffPercent, tpPercent, addMarginBase, leverage, amountMultiplier, diffMultiplier, direction, takerFee } = inputs;
+        const { initialPrice, addDiffPercent, tpPercent, addMarginBase, leverage, amountMultiplier, diffMultiplier, direction, takerFee, fundingRate, fundingSettlements, maxAdds } = inputs;
 
         // Calculate margin for this specific additional step using the amount multiplier
         const currentAddMargin = addMarginBase * Math.pow(amountMultiplier, stepNumber - 1);
@@ -339,7 +352,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate closing fee for the entire position if TP is hit at this stage
         const closingFeeForTotalPositionAtTp = calculateFee(newTotalQuantity, currentTpPriceForStep, takerFee);
         // Calculate final take profit for this step, accounting for all opening fees and the closing fee for the total position
-        const currentTpProfitWithFees = profitBeforeFees - accumulatedOpeningFees - closingFeeForTotalPositionAtTp;
+        let currentTpProfitWithFees = profitBeforeFees - accumulatedOpeningFees - closingFeeForTotalPositionAtTp;
+
+        // Calculate and subtract funding cost for this step
+        const fundingEventsPerVirtualStep = (maxAdds + 1) > 0 ? fundingSettlements / (maxAdds + 1) : 0;
+        const currentPositionValue = newTotalQuantity * newCurrentAvgPrice; // Value after this add
+        const stepFundingCost = currentPositionValue * (fundingRate / 100) * fundingEventsPerVirtualStep;
+        currentTpProfitWithFees -= stepFundingCost;
 
         // Calculate percentage change required from current add price to the new TP price
         let percentToTp = 0;
@@ -352,12 +371,13 @@ document.addEventListener('DOMContentLoaded', () => {
             addPrice: currentAddPrice,
             addQuantity: currentAddQuantity,
             addMargin: currentAddMargin,
-            openingFee: currentOpeningFee, // Store opening fee for this step
-            accumulatedOpeningFees: accumulatedOpeningFees, // Pass on cumulative opening fees
+            openingFee: currentOpeningFee,
+            accumulatedOpeningFees: accumulatedOpeningFees,
+            stepFundingCost: stepFundingCost, // Store funding cost for this step
             unrealizedPnl: stepUnrealizedPnl,
             avgPrice: newCurrentAvgPrice,
-            tpPrice: currentTpPriceForStep, // Use the locally calculated TP price for this step's context
-            tpProfit: currentTpProfitWithFees, // Fee-adjusted profit for this step
+            tpPrice: currentTpPriceForStep,
+            tpProfit: currentTpProfitWithFees,
             percentToTp: percentToTp,
             totalMargin: newTotalMargin,
             totalQuantity: newTotalQuantity,
@@ -381,10 +401,9 @@ document.addEventListener('DOMContentLoaded', () => {
         let calculatedLiqPrice = NaN;
         let priceDiffFromStartToLastAddPercent = 0;
         let liqPriceDiffFromAvgPercent = NaN;
-        const mmrDecimal = maintenanceMarginRate / 100; // Convert MMR from percentage to decimal
+        const mmrDecimal = maintenanceMarginRate / 100;
 
         if (finalCumulativeTotalQuantity > 0) {
-            // Calculate Final Unrealized PNL based on the last trade's price and the final average price
             if (allStepsData.length > 0) {
                 if (direction === 'long') {
                     finalUnrealizedPnl = finalCumulativeTotalQuantity * (priceOfLastTrade - finalCumulativeAvgPrice);
@@ -393,62 +412,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Liquidation Price Calculation using Maintenance Margin Rate
             if (direction === 'long') {
-                // Formula: AvgEntry * (1 + MMR) - (TotalUserMargin / TotalQuantity)
                 calculatedLiqPrice = finalCumulativeAvgPrice * (1 + mmrDecimal) - (finalCumulativeTotalMargin / finalCumulativeTotalQuantity);
-            } else { // short
-                // Formula: AvgEntry * (1 - MMR) + (TotalUserMargin / TotalQuantity)
+            } else {
                 calculatedLiqPrice = finalCumulativeAvgPrice * (1 - mmrDecimal) + (finalCumulativeTotalMargin / finalCumulativeTotalQuantity);
             }
 
-            // Calculate percentage difference from final average price to liquidation price
             if (finalCumulativeAvgPrice !== 0 && !isNaN(calculatedLiqPrice) && calculatedLiqPrice > 0) {
                 const diffToLiq = calculatedLiqPrice - finalCumulativeAvgPrice;
                 liqPriceDiffFromAvgPercent = (diffToLiq / finalCumulativeAvgPrice) * 100;
-            } else if (calculatedLiqPrice <= 0) { // If liquidation price is zero or negative
-                 liqPriceDiffFromAvgPercent = direction === 'long' ? -100 : 100; // Represents immediate or past liquidation
+            } else if (calculatedLiqPrice <= 0) {
+                 liqPriceDiffFromAvgPercent = direction === 'long' ? -100 : 100;
             }
         }
 
-        // Calculate percentage difference between the initial price and the price of the last actual addition
         const actualAddsCount = allStepsData.filter(s => s.step > 0).length;
         if (actualAddsCount > 0 && initialPrice !== 0 && priceOfLastTrade !== initialPrice) {
             priceDiffFromStartToLastAddPercent = ((priceOfLastTrade - initialPrice) / initialPrice) * 100;
         }
 
-        // Calculate final Take Profit amount, considering all accumulated opening fees and the fee for closing the entire position
-        let finalTpProfitWithFees = 0;
+        // Calculate total estimated funding cost from all steps
+        const totalEstimatedFundingCost = allStepsData.reduce((sum, step) => sum + (step.stepFundingCost || 0), 0);
+
+        let finalTpProfitWithAllFees = 0;
         if (finalCumulativeTotalQuantity > 0) {
-            // Sum of all opening fees from each step
             const totalAccumulatedOpeningFees = allStepsData.reduce((sum, step) => sum + (step.openingFee || 0), 0);
-            // Determine the TP price for the final average entry price
             const finalTpPriceForSummary = finalCumulativeAvgPrice * (1 + (direction === 'long' ? tpPercent : -tpPercent) / 100);
-            // Calculate the fee to close the entire position at the final TP price
             const finalClosingFee = calculateFee(finalCumulativeTotalQuantity, finalTpPriceForSummary, takerFee);
-            // Calculate profit before any fees at the summary level
-            const profitBeforeFeesAtSummary = finalCumulativeTotalQuantity * Math.abs(finalTpPriceForSummary - finalCumulativeAvgPrice);
-            // Final TP profit after all fees
-            finalTpProfitWithFees = profitBeforeFeesAtSummary - totalAccumulatedOpeningFees - finalClosingFee;
+            const profitBeforeAllFees = finalCumulativeTotalQuantity * Math.abs(finalTpPriceForSummary - finalCumulativeAvgPrice);
+            // Final TP profit after ALL fees (trading and funding)
+            finalTpProfitWithAllFees = profitBeforeAllFees - totalAccumulatedOpeningFees - finalClosingFee - totalEstimatedFundingCost;
         } else {
-            // If there's no quantity (e.g. only initial step failed or invalid inputs),
-            // attempt to use the initial step's TP profit (which is already fee-adjusted).
             const initialStepData = allStepsData.find(step => step.step === 0);
             if (initialStepData) {
-                finalTpProfitWithFees = initialStepData.tpProfit;
+                finalTpProfitWithAllFees = initialStepData.tpProfit; // Already includes its share of funding cost & trading fees
             }
         }
 
         return {
             finalAvgPrice: finalCumulativeTotalQuantity > 0 ? finalCumulativeAvgPrice : initialPrice,
-            totalMargin: finalCumulativeTotalMargin, // Total margin input by user
-            finalUnrealizedPnl: finalUnrealizedPnl, // PNL at the point of the last trade
-            estimatedLiqPrice: calculatedLiqPrice, // More accurate liquidation price
-            priceDiffPercentValue: priceDiffFromStartToLastAddPercent, // Price change from first to last entry
-            liqDiffPercentValue: liqPriceDiffFromAvgPercent, // % change from avg price to liq price
-            finalTpProfit: finalTpProfitWithFees, // Overall TP profit after all fees
-            hasTrades: finalCumulativeTotalQuantity > 0, // Flag if any position was effectively opened
-            hasAdds: actualAddsCount > 0 // Flag if any additional positions were made
+            totalMargin: finalCumulativeTotalMargin,
+            finalUnrealizedPnl: finalUnrealizedPnl,
+            estimatedLiqPrice: calculatedLiqPrice,
+            priceDiffPercentValue: priceDiffFromStartToLastAddPercent,
+            liqDiffPercentValue: liqPriceDiffFromAvgPercent,
+            totalEstimatedFundingCost: totalEstimatedFundingCost, // Add this to summary data
+            finalTpProfit: finalTpProfitWithAllFees,
+            hasTrades: finalCumulativeTotalQuantity > 0,
+            hasAdds: actualAddsCount > 0
         };
     }
 
@@ -459,20 +470,17 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function updateSummaryInDOM(summaryData) {
         const initialPriceFromForm = parseFloat(document.getElementById('initial-price').value) || 0;
+        const totalFundingFeeSpan = document.getElementById('total-funding-fee'); // Get the new span
 
-        // Display final average price
         finalAvgPriceSpan.textContent = summaryData.hasTrades ? summaryData.finalAvgPrice.toFixed(6) : initialPriceFromForm.toFixed(6);
         finalAvgPriceSpan.title = '所有加仓完成后，最终的总持仓平均成本价';
 
-        // Display total margin
         totalMarginSpan.textContent = summaryData.totalMargin.toFixed(2);
         totalMarginSpan.title = '用户为所有仓位投入的总保证金（不含手续费）';
 
-        // Display final unrealized P&L at the moment of the last trade
         finalUnrealizedPnlSpan.textContent = summaryData.finalUnrealizedPnl.toFixed(2);
         finalUnrealizedPnlSpan.title = '最后一次加仓完成时，总持仓相对其最终均价的未实现盈亏';
 
-        // Display percentage difference between first and last entry price
         if (summaryData.hasAdds) {
             priceDiffPercentSpan.textContent = `${summaryData.priceDiffPercentValue.toFixed(2)}%`;
         } else if (parseInt(document.getElementById('max-adds').value) <= 0) {
@@ -482,20 +490,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         priceDiffPercentSpan.title = '从第一次开仓价格到最后一次加仓价格的价格变动百分比';
 
-        // Display estimated liquidation price and its difference from average price
         if (summaryData.hasTrades && !isNaN(summaryData.estimatedLiqPrice)) {
             if (summaryData.estimatedLiqPrice > 0) {
-                liquidationPriceSpan.textContent = `${summaryData.estimatedLiqPrice.toFixed(6)} USDT`; // Text updated to reflect more precise calculation
+                liquidationPriceSpan.textContent = `${summaryData.estimatedLiqPrice.toFixed(6)} USDT`;
                 liquidationPriceSpan.style.color = '#e74c3c';
             } else {
-                liquidationPriceSpan.textContent = `已低于或等于0`; // Indicates liquidation price is at or below zero
+                liquidationPriceSpan.textContent = `已低于或等于0`;
                 liquidationPriceSpan.style.color = '#e74c3c';
             }
 
             if (!isNaN(summaryData.liqDiffPercentValue)) {
                 liqDiffPercentSpan.textContent = `${summaryData.liqDiffPercentValue.toFixed(2)}%`;
                 const direction = document.getElementById('direction').value;
-                // Color indicates if liquidation is favorable (further away, green) or unfavorable (closer, red)
                 liqDiffPercentSpan.style.color = (direction === 'long' && summaryData.liqDiffPercentValue < 0) || (direction === 'short' && summaryData.liqDiffPercentValue > 0) ? '#e74c3c' : '#2ecc71';
             } else {
                 liqDiffPercentSpan.textContent = 'N/A';
@@ -510,9 +516,17 @@ document.addEventListener('DOMContentLoaded', () => {
         liquidationPriceSpan.title = '根据总保证金、最终均价及维持保证金率估算的理论爆仓价格（已考虑维持保证金率，但不含未实现盈亏和额外费用影响）';
         liqDiffPercentSpan.title = '从最终持仓均价到理论爆仓价格所需的价格变动百分比';
 
-        // Display final take profit theoretical earnings after all fees
+        // Display Total Funding Fee
+        // Show '+' for positive (cost), default '-' for negative (gain). Format to 4 decimal places for precision.
+        const fundingFeeText = summaryData.totalEstimatedFundingCost > 0 ? `+${summaryData.totalEstimatedFundingCost.toFixed(4)}` : summaryData.totalEstimatedFundingCost.toFixed(4);
+        totalFundingFeeSpan.textContent = `${fundingFeeText} USDT`;
+        totalFundingFeeSpan.title = '根据预估资金费率和结算次数, 以及每阶段持仓价值计算的总资金费用。正数为总支付，负数为总收到。';
+        // Color coding for funding fee: red for cost (positive), green for gain (negative), default for zero
+        totalFundingFeeSpan.style.color = summaryData.totalEstimatedFundingCost > 0 ? '#e74c3c' : (summaryData.totalEstimatedFundingCost < 0 ? '#2ecc71' : '#333');
+
+
         finalTpProfitSpan.textContent = summaryData.finalTpProfit.toFixed(2);
-        finalTpProfitSpan.title = '若最终总持仓在最终止盈价平仓的理论总收益（已扣除所有开仓手续费和平仓手续费）';
+        finalTpProfitSpan.title = '若最终总持仓在最终止盈价平仓的理论总收益（已扣除所有开仓、平仓手续费及预估总资金费用）';
     }
 
     /**
@@ -647,6 +661,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 `TF${formatNumForFilename(inputsForFilename.takerFee, 3)}`,
                 `MF${formatNumForFilename(inputsForFilename.makerFee, 3)}`,
                 `MMR${formatNumForFilename(inputsForFilename.maintenanceMarginRate, 1)}`,
+                `FR${formatNumForFilename(inputsForFilename.fundingRate, 4)}`, // Funding Rate
+                `FS${formatIntForFilename(inputsForFilename.fundingSettlements)}`, // Funding Settlements
                 `AM${formatNumForFilename(inputsForFilename.amountMultiplier)}`,
                 `DM${formatNumForFilename(inputsForFilename.diffMultiplier)}`
             ];
