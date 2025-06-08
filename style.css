@@ -142,4 +142,14 @@ td:first-child, th:first-child {
 
 #export-image-btn:hover {
     background-color: #27ae60; /* 悬停时颜色变深 */
-} 
+}
+
+/* Styles for validation error messages */
+.error-message {
+    color: #e74c3c; /* Red color for errors */
+    font-size: 0.85em; /* Smaller font size */
+    margin-top: 4px; /* Space above the message */
+    display: block; /* Ensure it takes its own line and margin applies */
+    word-wrap: break-word; /* Allow long messages to wrap */
+    overflow-wrap: break-word; /* Alternative for word-wrap */
+}

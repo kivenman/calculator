@@ -58,6 +58,21 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="taker-fee">Taker 手续费 (%):</label>
+                    <input type="number" id="taker-fee" name="taker-fee" value="0.075" step="any" min="0">
+                </div>
+
+                <div class="form-group">
+                    <label for="maker-fee">Maker 手续费 (%):</label>
+                    <input type="number" id="maker-fee" name="maker-fee" value="0.025" step="any" min="0">
+                </div>
+
+                <div class="form-group">
+                    <label for="maintenance-margin-rate">维持保证金率 (%):</label>
+                    <input type="number" id="maintenance-margin-rate" name="maintenance-margin-rate" value="0.5" step="any" min="0" max="100">
+                </div>
+
+                <div class="form-group">
                     <label for="amount-multiplier">加仓金额倍数:</label>
                     <input type="number" id="amount-multiplier" name="amount-multiplier" value="1.5" step="any" required min="0">
                 </div>
@@ -84,6 +99,7 @@
                             <th>理论委托价 (USDT)</th>
                             <th>理论委托量</th>
                             <th>本次保证金 (USDT)</th>
+                            <th>开仓手续费 (USDT)</th>
                             <th>本次未实现盈亏 (USDT)</th>
                             <th>加仓后均价 (USDT)</th>
                             <th>本次止盈价 (USDT)</th>
