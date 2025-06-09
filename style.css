@@ -1,111 +1,188 @@
+/* General Body Styles */
 body {
-    font-family: sans-serif;
-    line-height: 1.6;
+    font-family: sans-serif; /* Standard sans-serif font stack */
+    line-height: 1.6; /* Improve readability */
     margin: 20px;
     background-color: #f4f4f4;
-    color: #333;
+    color: #333; /* Default text color */
 }
 
+/* Main container for each calculator */
 .calculator-container {
-    max-width: 4000px; /* 设置最大宽度 */
-    width: calc(100% - 40px); /* 宽度为视口宽度减去两侧留白 (左右各 20px) */
-    margin: 20px auto; /* 上下外边距 20px，左右自动实现水平居中 */
-    background: #fff;
-    padding: 30px; /* 内部边距 */
-    border-radius: 8px;
-    box-shadow: 0 0 15px rgba(0,0,0,0.1);
-    box-sizing: border-box; /* 确保 padding 和 border 包含在元素的总宽度和高度内 */
+    max-width: 4000px; /* Arbitrary large max-width for very wide screens */
+    width: calc(100% - 40px); /* Full width minus side margins */
+    margin: 20px auto; /* Centering with top/bottom margin */
+    background: #fff; /* White background */
+    padding: 30px; /* Internal spacing */
+    border-radius: 8px; /* Rounded corners */
+    box-shadow: 0 0 15px rgba(0,0,0,0.1); /* Subtle shadow for depth */
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 
+/* General heading styles */
 h1 {
     text-align: center;
-    color: #2c3e50;
+    color: #2c3e50; /* Dark blue-grey color */
     margin-bottom: 25px;
 }
 
+/* General form styling */
 form {
-    margin-bottom: 30px;
+    margin-bottom: 30px; /* Space below the form */
 }
 
+/* Grid layout for form inputs */
 .form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* Responsive grid: items fit if >220px, else wrap */
+    gap: 18px; /* Space between grid items */
 }
 
+/* Styling for fieldset to group inputs */
+fieldset {
+    border: 1px solid #ddd; /* Light grey border */
+    padding: 20px; /* Spacing inside the fieldset */
+    margin-bottom: 25px; /* Space below each fieldset */
+    border-radius: 6px; /* Rounded corners for fieldset */
+}
+
+/* Styling for legend (title) of fieldsets */
+legend {
+    padding: 0 10px; /* Horizontal padding for the legend text */
+    font-weight: bold;
+    color: #333; /* Darker text for legend */
+    font-size: 1.1em; /* Slightly larger font for legend */
+}
+
+/* Styling for individual form groups (label + input) */
 .form-group {
     display: flex;
-    flex-direction: column;
+    flex-direction: column; /* Stack label above input */
 }
 
 .form-group label {
-    margin-bottom: 8px;
+    margin-bottom: 8px; /* Space between label and input */
     font-weight: bold;
-    color: #555;
+    color: #555; /* Medium grey for label text */
 }
 
 .form-group input,
 .form-group select {
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 1rem;
+    padding: 10px; /* Padding inside input fields */
+    border: 1px solid #ddd; /* Light grey border */
+    border-radius: 4px; /* Rounded corners for inputs */
+    font-size: 1rem; /* Standard font size */
 }
 
+/* Styling for the main submit button (Martingale calculator) */
 button[type="submit"] {
     display: block;
     width: 100%;
     padding: 12px;
-    background-color: #3498db;
+    background-color: #3498db; /* Blue background */
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 1.1rem;
-    transition: background-color 0.3s ease;
-    margin-top: 20px; /* Add some space above the button */
+    transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+    margin-top: 20px;
 }
 
 button[type="submit"]:hover {
-    background-color: #2980b9;
+    background-color: #2980b9; /* Darker blue on hover */
 }
 
+/* Styling for headings within results containers */
 .results-container h2,
 .results-container h3 {
     color: #2c3e50;
-    border-bottom: 2px solid #eee;
+    border-bottom: 2px solid #eee; /* Separator line below heading */
     padding-bottom: 5px;
     margin-top: 30px;
     margin-bottom: 15px;
 }
 
+/* Container for Martingale steps table, allows horizontal scrolling */
 .table-container {
-    overflow-x: auto; /* Add horizontal scroll for smaller screens */
+    overflow-x: auto;
 }
 
+/* General table styling */
 table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: collapse; /* Remove space between borders */
     margin-bottom: 20px;
 }
 
 th, td {
-    border: 1px solid #ddd;
-    padding: 10px;
-    text-align: right;
-    /* white-space: nowrap; */ /* 移除或注释掉这行以允许换行 */
+    border: 1px solid #ddd; /* Light grey border for cells */
+    padding: 10px; /* Padding within cells */
+    text-align: right; /* Align text to the right for numbers */
+    /* white-space: nowrap; */ /* Commented out to allow text wrapping in cells */
 }
 
 th {
-    background-color: #f9f9f9;
+    background-color: #f9f9f9; /* Light background for table headers */
     font-weight: bold;
-    text-align: center;
+    text-align: center; /* Center-align header text */
+    font-size: 0.95em;
 }
 
+td {
+    font-size: 0.9em;
+}
+
+/* Center-align text in the first column of the table (e.g., step number) */
 td:first-child, th:first-child {
     text-align: center;
 }
 
+/* Responsive adjustments for smaller screens (tablets and below) */
+@media (max-width: 768px) {
+    .form-grid {
+        grid-template-columns: 1fr; /* Stack form elements in a single column */
+    }
+
+    .calculator-container {
+        padding: 20px;
+    }
+
+    h1 {
+        font-size: 1.5em;
+    }
+
+    .tabs-container {
+        padding: 0 10px;
+    }
+
+    .tab-btn {
+        padding: 10px 15px;
+        font-size: 0.9rem;
+    }
+}
+
+/* Responsive adjustments for very small screens (mobiles) */
+@media (max-width: 480px) {
+    body {
+        margin: 10px;
+    }
+    .calculator-container {
+        width: calc(100% - 20px);
+        padding: 15px;
+    }
+
+    th, td {
+        padding: 8px;
+        font-size: 0.85em;
+    }
+
+    legend {
+        font-size: 1em; /* Adjust legend font size for mobiles */
+    }
+}
+
+/* Martingale Summary Section Styling */
 #summary p {
     margin-bottom: 10px;
     font-size: 1.05rem;
@@ -113,43 +190,128 @@ td:first-child, th:first-child {
 
 #summary span {
     font-weight: bold;
-    color: #3498db;
+    color: #3498db; /* Blue color for summary values */
 }
 
+/* Disclaimer Text Styling */
 .disclaimer {
     margin-top: 30px;
     font-size: 0.9em;
-    color: #777;
+    color: #777; /* Grey color for disclaimer */
     text-align: center;
-    border-top: 1px solid #eee;
+    border-top: 1px solid #eee; /* Separator line above disclaimer */
     padding-top: 15px;
 }
 
-/* 为导出按钮添加样式 */
+/* Martingale "Export to Image" Button Styling */
 #export-image-btn {
-    display: block; /* 使其独占一行 */
-    width: 100%;    /* 与计算按钮同宽 */
-    padding: 12px;  /* 与计算按钮同内边距 */
-    background-color: #2ecc71; /* 绿色背景 */
-    color: white;   /* 白色文字 */
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background-color: #2ecc71; /* Green background */
+    color: white;
     border: none;
-    border-radius: 4px; /* 与计算按钮同圆角 */
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 1.1rem; /* 与计算按钮同字号 */
-    transition: background-color 0.3s ease; /* 与计算按钮同过渡效果 */
-    margin-top: 10px; /* 与计算按钮保持间距 */
+    font-size: 1.1rem;
+    transition: background-color 0.3s ease;
+    margin-top: 10px;
 }
 
 #export-image-btn:hover {
-    background-color: #27ae60; /* 悬停时颜色变深 */
+    background-color: #27ae60; /* Darker green on hover */
 }
 
-/* Styles for validation error messages */
+/* Styles for validation error messages (shared by both calculators) */
 .error-message {
-    color: #e74c3c; /* Red color for errors */
-    font-size: 0.85em; /* Smaller font size */
-    margin-top: 4px; /* Space above the message */
-    display: block; /* Ensure it takes its own line and margin applies */
-    word-wrap: break-word; /* Allow long messages to wrap */
-    overflow-wrap: break-word; /* Alternative for word-wrap */
+    color: #e74c3c;
+    font-size: 0.85em;
+    margin-top: 4px;
+    display: block;
+    word-wrap: break-word; /* Wrap long error messages */
+    overflow-wrap: break-word;
+}
+
+/* Standard Contract Calculator Specific Styles */
+#standard-calculator-content {
+    /* Specific container adjustments if any; currently inherits from .calculator-container */
+    /* margin-top: 40px; -> Removed, tab navigation handles separation */
+    /* border-top: 2px dashed #ccc; -> Removed */
+    /* padding-top: 30px; -> Handled by .calculator-container */
+}
+
+#standard-calculator-content h1 {
+    color: #16a085; /* Distinct heading color for Standard calculator */
+}
+
+/* Standard calculator's calculate button */
+#standard-calculator-form button[type="button"] {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background-color: #16a085; /* Color matching its heading */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background-color 0.3s ease;
+    margin-top: 20px;
+}
+
+#standard-calculator-form button[type="button"]:hover {
+    background-color: #117a65; /* Darker shade on hover */
+}
+
+/* Headings within Standard calculator results */
+#std-results h2 {
+    color: #16a085; /* Match calculator's theme color */
+}
+
+/* Standard calculator summary paragraph styling */
+#std-summary p {
+    margin-bottom: 10px;
+    font-size: 1.05rem;
+}
+
+/* Standard calculator summary value styling */
+#std-summary span {
+    font-weight: bold;
+    color: #16a085; /* Match calculator's theme color */
+}
+
+/* Tab Navigation Styles */
+.tabs-container {
+    display: flex; /* Arrange tab buttons in a row */
+    margin-bottom: 0; /* No bottom margin, calculator container will have its own */
+    border-bottom: 2px solid #ddd; /* Separator line below tabs */
+    background-color: #f9f9f9;
+    padding: 0 20px; /* Align with calculator container's horizontal padding */
+}
+
+.tab-btn {
+    padding: 12px 20px;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #555; /* Default tab text color */
+    border-bottom: 3px solid transparent; /* Placeholder for active indicator */
+    margin-right: 5px;
+    transition: color 0.3s ease, border-bottom-color 0.3s ease; /* Smooth transitions */
+}
+
+.tab-btn:hover {
+    color: #007bff; /* Blue highlight on hover */
+}
+
+.tab-btn.active {
+    color: #007bff; /* Blue text for active tab */
+    border-bottom-color: #007bff; /* Blue underline for active tab */
+}
+
+/* Class to hide inactive calculator content */
+.calculator-content.hidden {
+    display: none; /* Hide the content */
 }

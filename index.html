@@ -3,104 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>马丁格尔合约计算器 (USDT)</title>
+    <title>合约计算器 (USDT)</title>
     <link rel="stylesheet" href="style.css">
-    <!-- 引入 html2canvas 库 -->
+    <!-- html2canvas library for exporting results as an image -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
-    <div class="calculator-container">
-        <h1>马丁格尔合约计算器 (USDT本位)</h1>
+    <!-- Tab navigation container -->
+    <div class="tabs-container">
+        <!-- Tab button for Martingale Calculator, active by default. data-tab links to the content ID suffix. -->
+        <button class="tab-btn active" data-tab="martingale">马丁格尔策略计算器</button>
+        <!-- Tab button for Standard Calculator. data-tab links to the content ID suffix. -->
+        <button class="tab-btn" data-tab="standard">标准合约收益计算器</button>
+    </div>
 
-        <form id="calculator-form">
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="direction">开仓方向:</label>
-                    <select id="direction" name="direction">
-                        <option value="long">做多</option>
-                        <option value="short">做空</option>
-                    </select>
-                </div>
+    <!-- Wrapper for all calculator content sections -->
+    <div id="calculators-wrapper">
+        <!-- Martingale Calculator Section -->
+        <div id="martingale-calculator-content" class="calculator-container calculator-content">
+            <h1>马丁格尔策略合约计算器 (USDT本位)</h1>
 
-                <div class="form-group">
-                    <label for="initial-price">第一次开仓价格 (USDT):</label>
-                    <input type="number" id="initial-price" name="initial-price" step="any" required>
-                </div>
+            <form id="calculator-form">
+                <!-- Grouping for core strategy parameters -->
+                <fieldset>
+                    <legend>核心策略参数</legend>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="direction">开仓方向:</label>
+                            <select id="direction" name="direction">
+                                <option value="long">做多</option>
+                                <option value="short">做空</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="initial-price">第一次开仓价格 (USDT):</label>
+                            <input type="number" id="initial-price" name="initial-price" step="any" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="add-diff-percent">涨/跌多少加仓 (%):</label>
+                            <input type="number" id="add-diff-percent" name="add-diff-percent" value="1" step="any" required min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="tp-percent">单周期止盈目标 (%):</label>
+                            <input type="number" id="tp-percent" name="tp-percent" value="0.38" step="any" required min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="max-adds">最大加仓次数:</label>
+                            <input type="number" id="max-adds" name="max-adds" value="13" required min="0" step="1">
+                        </div>
+                    </div>
+                </fieldset>
 
-                <div class="form-group">
-                    <label for="add-diff-percent">涨/跌多少加仓 (%):</label>
-                    <input type="number" id="add-diff-percent" name="add-diff-percent" value="1" step="any" required min="0">
-                </div>
+                <!-- Grouping for margin and leverage settings -->
+                <fieldset>
+                    <legend>保证金与杠杆</legend>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="initial-margin">首次下单保证金 (USDT):</label>
+                            <input type="number" id="initial-margin" name="initial-margin" value="20" step="any" required min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="add-margin">加仓单保证金 (基础, USDT):</label>
+                            <input type="number" id="add-margin" name="add-margin" value="15" step="any" required min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="leverage">杠杆倍数:</label>
+                            <input type="number" id="leverage" name="leverage" value="8" step="any" required min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="maintenance-margin-rate">维持保证金率 (%):</label>
+                            <input type="number" id="maintenance-margin-rate" name="maintenance-margin-rate" value="0.5" step="any" min="0" max="100">
+                        </div>
+                    </div>
+                </fieldset>
 
-                <div class="form-group">
-                    <label for="tp-percent">单周期止盈目标 (%):</label>
-                    <input type="number" id="tp-percent" name="tp-percent" value="0.38" step="any" required min="0">
-                </div>
+                <!-- Grouping for fee and funding rate settings -->
+                <fieldset>
+                    <legend>手续费与资金费率</legend>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="taker-fee">Taker 手续费 (%):</label>
+                            <input type="number" id="taker-fee" name="taker-fee" value="0.075" step="any" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="maker-fee">Maker 手续费 (%):</label>
+                            <input type="number" id="maker-fee" name="maker-fee" value="0.025" step="any" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="funding-rate" title="每次资金结算时预估的费率。正数为支付，负数为收到。">预估资金费率 (%):</label>
+                            <input type="number" id="funding-rate" name="funding-rate" value="0.01" step="any">
+                        </div>
+                        <div class="form-group">
+                            <label for="funding-settlements" title="在整个马丁格尔策略周期内（从开仓到最终止盈）预估发生资金结算的总次数。">预估结算次数:</label>
+                            <input type="number" id="funding-settlements" name="funding-settlements" value="3" step="1" min="0">
+                        </div>
+                    </div>
+                </fieldset>
 
-                <div class="form-group">
-                    <label for="initial-margin">首次下单保证金 (USDT):</label>
-                    <input type="number" id="initial-margin" name="initial-margin" value="20" step="any" required min="0">
-                </div>
+                <!-- Grouping for dynamic adjustment parameters (multipliers) -->
+                <fieldset>
+                    <legend>动态调整参数</legend>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="amount-multiplier">加仓金额倍数:</label>
+                            <input type="number" id="amount-multiplier" name="amount-multiplier" value="1.5" step="any" required min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="diff-multiplier">加仓价差倍数:</label>
+                            <input type="number" id="diff-multiplier" name="diff-multiplier" value="0.98" step="any" required min="0">
+                        </div>
+                    </div>
+                </fieldset>
 
-                <div class="form-group">
-                    <label for="add-margin">加仓单保证金 (基础, USDT):</label>
-                    <input type="number" id="add-margin" name="add-margin" value="15" step="any" required min="0">
-                </div>
+                <button type="submit">计算</button>
+                <button type="button" id="export-image-btn">导出为图片</button>
+            </form>
 
-                 <div class="form-group">
-                    <label for="max-adds">最大加仓次数:</label>
-                    <input type="number" id="max-adds" name="max-adds" value="13" required min="0" step="1">
-                </div>
-
-                <div class="form-group">
-                    <label for="leverage">杠杆倍数:</label>
-                    <input type="number" id="leverage" name="leverage" value="8" step="any" required min="1">
-                </div>
-
-                <div class="form-group">
-                    <label for="taker-fee">Taker 手续费 (%):</label>
-                    <input type="number" id="taker-fee" name="taker-fee" value="0.075" step="any" min="0">
-                </div>
-
-                <div class="form-group">
-                    <label for="maker-fee">Maker 手续费 (%):</label>
-                    <input type="number" id="maker-fee" name="maker-fee" value="0.025" step="any" min="0">
-                </div>
-
-                <div class="form-group">
-                    <label for="maintenance-margin-rate">维持保证金率 (%):</label>
-                    <input type="number" id="maintenance-margin-rate" name="maintenance-margin-rate" value="0.5" step="any" min="0" max="100">
-                </div>
-
-                <div class="form-group">
-                    <label for="funding-rate" title="每次资金结算时预估的费率。正数为支付，负数为收到。">预估资金费率 (%):</label>
-                    <input type="number" id="funding-rate" name="funding-rate" value="0.01" step="any">
-                </div>
-
-                <div class="form-group">
-                    <label for="funding-settlements" title="在整个马丁格尔策略周期内（从开仓到最终止盈）预估发生资金结算的总次数。">预估结算次数:</label>
-                    <input type="number" id="funding-settlements" name="funding-settlements" value="3" step="1" min="0">
-                </div>
-
-                <div class="form-group">
-                    <label for="amount-multiplier">加仓金额倍数:</label>
-                    <input type="number" id="amount-multiplier" name="amount-multiplier" value="1.5" step="any" required min="0">
-                </div>
-
-                 <div class="form-group">
-                    <label for="diff-multiplier">加仓价差倍数:</label>
-                    <input type="number" id="diff-multiplier" name="diff-multiplier" value="0.98" step="any" required min="0">
-                </div>
-            </div>
-
-            <button type="submit">计算</button>
-            <button type="button" id="export-image-btn">导出为图片</button>
-        </form>
-
+        <!-- Container for Martingale calculation results, hidden by default -->
         <div id="results" class="results-container" style="display: none;">
             <h2>计算结果</h2>
 
             <h3>逐次加仓详情:</h3>
+            <!-- Container for the steps table, allowing horizontal scroll on small screens -->
             <div class="table-container">
                 <table id="steps-table">
                     <thead>
@@ -118,12 +142,13 @@
                         </tr>
                     </thead>
                     <tbody id="steps-tbody">
-                        <!-- 结果将由 JS 填充 -->
+                        <!-- Martingale step results will be dynamically inserted here by JavaScript -->
                     </tbody>
                 </table>
             </div>
 
             <h3>总体概要:</h3>
+            <!-- Summary results for the Martingale strategy -->
             <div id="summary">
                 <p><strong>最终持仓成本 (均价):</strong> <span id="final-avg-price">-</span> USDT</p>
                 <p><strong>总体所需保证金:</strong> <span id="total-margin">-</span> USDT</p>
@@ -137,6 +162,71 @@
         </div>
          <p class="disclaimer">免责声明：本计算器结果仅供理论参考，不构成任何投资建议。实际交易结果可能因市场波动、手续费、滑点、资金费率、爆仓机制等多种因素影响而产生差异。</p>
     </div>
+
+    <!-- Standard Calculator Section, hidden by default -->
+    <div id="standard-calculator-content" class="calculator-container calculator-content hidden">
+        <h1>标准合约收益计算器 (USDT本位)</h1>
+        <form id="standard-calculator-form">
+            <!-- Grouping for core trade parameters -->
+            <fieldset>
+                <legend>核心交易参数</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="std-direction">开仓方向:</label>
+                        <select id="std-direction" name="std-direction">
+                            <option value="long">做多</option>
+                            <option value="short">做空</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="std-entry-price">开仓价格 (USDT):</label>
+                        <input type="number" id="std-entry-price" name="std-entry-price" step="any" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="std-exit-price">平仓价格 (USDT):</label>
+                        <input type="number" id="std-exit-price" name="std-exit-price" step="any" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="std-quantity">开仓数量 (例如: BTC, ETH):</label>
+                        <input type="number" id="std-quantity" name="std-quantity" step="any" required>
+                    </div>
+                </div>
+            </fieldset>
+            <!-- Grouping for leverage and risk parameters -->
+            <fieldset>
+                <legend>杠杆与风险参数</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="std-leverage">杠杆倍数:</label>
+                        <input type="number" id="std-leverage" name="std-leverage" value="10" step="any" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="std-taker-fee">Taker 手续费 (%):</label>
+                        <input type="number" id="std-taker-fee" name="std-taker-fee" value="0.075" step="any" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="std-maintenance-margin-rate">维持保证金率 (%):</label>
+                        <input type="number" id="std-maintenance-margin-rate" name="std-maintenance-margin-rate" value="0.5" step="any" min="0" max="100">
+                    </div>
+                </div>
+            </fieldset>
+            <button type="button" id="std-calculate-btn">计算</button>
+        </form>
+
+        <!-- Container for Standard calculator results, hidden by default -->
+        <div id="std-results" class="results-container" style="display: none;">
+            <h2>计算结果</h2>
+            <!-- Summary results for the Standard contract -->
+            <div id="std-summary">
+                <p><strong>盈亏 (USDT):</strong> <span id="std-pnl">-</span></p>
+                <p><strong>回报率 (ROE %):</strong> <span id="std-roe">-</span></p>
+                <p><strong>强平价格 (USDT):</strong> <span id="std-liquidation-price">-</span></p>
+                <p><strong>总手续费 (USDT):</strong> <span id="std-total-fees">-</span></p>
+            </div>
+        </div>
+        <p class="disclaimer">免责声明：本计算器结果仅供理论参考，不构成任何投资建议。实际交易结果可能因市场波动、手续费、滑点、资金费率、爆仓机制等多种因素影响而产生差异。</p>
+    </div>
+</div>
 
     <script src="script.js"></script>
 </body>

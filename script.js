@@ -1,6 +1,19 @@
+/**
+ * @file script.js
+ * Handles the logic for two cryptocurrency contract calculators:
+ * 1. Martingale Strategy Calculator
+ * 2. Standard Contract Calculator
+ * It includes input gathering, validation, core calculations, results display,
+ * tab navigation between calculators, and image export functionality for Martingale.
+ */
 document.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('calculator-form');
-    const resultsContainer = document.getElementById('results');
+    // --- Common DOM Elements ---
+    // Note: Martingale-specific result elements are accessed within m_updateSummaryInDOM
+    const resultsContainer = document.getElementById('results'); // Martingale results container
+    const stepsTbody = document.getElementById('steps-tbody');   // Martingale steps table body
+
+    // --- Martingale Calculator Elements & Event Listener ---
+    const form = document.getElementById('calculator-form'); // Martingale form
     const stepsTbody = document.getElementById('steps-tbody');
     const finalAvgPriceSpan = document.getElementById('final-avg-price');
     const totalMarginSpan = document.getElementById('total-margin');
@@ -30,23 +43,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    form.addEventListener('submit', (e) => {
-        e.preventDefault(); // Prevent default form submission behavior
-        calculateMartingale(); // Trigger the main calculation function
-    });
+    if (form) { // Ensure Martingale form exists
+        form.addEventListener('submit', (e) => {
+            e.preventDefault(); // Prevent default form submission behavior
+            calculateMartingale(); // Trigger the main Martingale calculation
+        });
+    }
+
+    // --- Martingale Calculator Helper Functions ---
 
     /**
-     * Gathers all input values from the HTML form.
+     * Gathers all input values from the Martingale calculator HTML form.
      * Parses string values into appropriate number types (float or integer).
-     * @returns {object} An object containing all form inputs, keyed by their semantic names.
-     *                   Includes: direction, initialPrice, addDiffPercent, tpPercent, initialMargin,
+     * @returns {object} An object containing all form inputs for the Martingale calculator,
+     *                   including direction, initialPrice, addDiffPercent, tpPercent, initialMargin,
      *                   addMarginBase, maxAdds, leverage, takerFee, makerFee, maintenanceMarginRate,
-     *                   amountMultiplier, diffMultiplier.
+     *                   fundingRate, fundingSettlements, amountMultiplier, diffMultiplier.
      */
-    function getFormInputs() {
-        // Read values from form elements and parse them to their respective types.
+    function m_getFormInputs() {
         return {
-            direction: document.getElementById('direction').value, // 'long' or 'short'
+            direction: document.getElementById('direction').value,
             initialPrice: parseFloat(document.getElementById('initial-price').value), // Starting price of the asset
             addDiffPercent: parseFloat(document.getElementById('add-diff-percent').value), // Percentage difference from initial price to trigger an additional position
             tpPercent: parseFloat(document.getElementById('tp-percent').value), // Take profit percentage from the average entry price
@@ -65,15 +81,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Validates the parsed user inputs from the form.
+     * Validates the parsed user inputs from the Martingale form.
+     * Validates the parsed user inputs from the Martingale form.
      * Checks for NaN, negative values, and logical constraints (e.g., leverage >= 1).
-     * @param {object} inputs - The input object from `getFormInputs()`.
+     * @param {object} inputs - The input object from `m_getFormInputs()`.
      * @returns {object} An errors object where keys are input field IDs and values are error messages.
      *                   Returns an empty object if all inputs are valid.
      */
-    function validateInputs(inputs) {
+    function m_validateInputs(inputs) {
         const errors = {};
-        // Validate initialPrice: Must be a positive number.
+        // Example: Validate initialPrice: Must be a positive number.
         if (isNaN(inputs.initialPrice) || inputs.initialPrice <= 0) {
             errors['initial-price'] = '初始价格必须是大于0的数字。';
         }
@@ -133,73 +150,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Clears any previously displayed validation error messages from the DOM.
-     * This function finds all elements with the class 'error-message' and removes them.
+     * Clears any previously displayed validation error messages from the Martingale form DOM.
      */
-    function clearValidationErrors() {
-        const errorMessages = document.querySelectorAll('.error-message');
+    function m_clearValidationErrors() {
+        const errorMessages = document.querySelectorAll('#calculator-form .error-message');
         errorMessages.forEach(msgElement => msgElement.remove());
     }
 
     /**
-     * Displays validation errors in the DOM, positioning them near the respective input fields.
-     * @param {object} errors - An object where keys are input field IDs and values are the error messages.
-     *                        Example: `{'initial-price': 'Error message here'}`
+     * Displays validation errors in the Martingale form DOM.
+     * Displays validation errors in the Martingale form DOM, under respective input fields.
+     * @param {object} errors - An object where keys are Martingale input field IDs and values are error messages.
      */
-    function displayValidationErrors(errors) {
+    function m_displayValidationErrors(errors) {
         for (const fieldId in errors) {
-            const inputFieldElement = document.getElementById(fieldId);
+            const inputFieldElement = document.getElementById(fieldId); // Get the input field
             if (inputFieldElement) {
-                // Find the parent '.form-group' to append the error message within the group
-                const parentFormGroup = inputFieldElement.closest('.form-group');
+                const parentFormGroup = inputFieldElement.closest('.form-group'); // Find its parent form group
                 if (parentFormGroup) {
+                    // Remove any existing error message for this field first
+                    const existingError = parentFormGroup.querySelector('.error-message');
+                    if (existingError) existingError.remove();
+                    // Create and append the new error message
                     const errorSpan = document.createElement('span');
-                    errorSpan.className = 'error-message'; // Assign class for styling
-                    errorSpan.textContent = errors[fieldId]; // Set the error text
-                    parentFormGroup.appendChild(errorSpan); // Add the error message to the DOM
+                    errorSpan.className = 'error-message';
+                    errorSpan.textContent = errors[fieldId];
+                    parentFormGroup.appendChild(errorSpan);
                 }
             }
         }
     }
 
     /**
-     * Calculates details for the initial position (step 0).
-     * @param {object} inputs - The validated form inputs.
-     * @returns {object} Data for the initial step, including calculated values like quantity, TP price, etc.
-     */
-    /**
-     * Calculates the trading fee for a given quantity, price, and fee percentage.
-     * Fee = Quantity * Price * (FeePercent / 100).
+     * Calculates the trading fee for a given quantity, price, and fee percentage for Martingale.
      * @param {number} quantity - The quantity of the asset being traded.
      * @param {number} price - The price per unit of the asset.
      * @param {number} feePercent - The fee percentage (e.g., 0.075 for 0.075%).
-     * @returns {number} The calculated trading fee. Returns 0 if inputs are invalid for fee calculation.
+     * @returns {number} The calculated trading fee.
      */
-    function calculateFee(quantity, price, feePercent) {
+    function m_calculateFee(quantity, price, feePercent) {
         // Basic validation for fee calculation parameters
         if (quantity <= 0 || price <= 0 || feePercent < 0) {
-            return 0; // No fee if quantity/price is zero/negative or feePercent is negative
+            return 0;
         }
-        return quantity * price * (feePercent / 100); // Standard fee calculation formula
+        return quantity * price * (feePercent / 100);
     }
 
     /**
-     * Calculates all relevant details for the initial position (Step 0).
-     * This includes entry price, quantity, margin, opening fee, take profit price, and profit considering fees.
-     * @param {object} inputs - The validated form inputs object from `getFormInputs()`.
-     * @returns {object} An object containing all data for the initial step.
-     *                   Properties include: step, addPrice, addQuantity, addMargin, openingFee,
-     *                   accumulatedOpeningFees, unrealizedPnl, avgPrice, tpPrice, tpProfit,
-     *                   percentToTp, cumulativeDiffPercent, stepFundingCost.
+     * Calculates all relevant details for the Martingale initial position (Step 0).
+     * This includes entry price, quantity, margin, opening fee, take profit price, and profit considering fees and funding.
+     * @param {object} inputs - The validated form inputs object from `m_getFormInputs()`.
+     * @returns {object} An object containing all data for the initial step (e.g., step, addPrice, addQuantity, avgPrice, tpPrice, tpProfit).
      */
-    function calculateInitialPosition(inputs) {
+    function m_calculateInitialPosition(inputs) {
         const { initialPrice, initialMargin, leverage, direction, tpPercent, takerFee, fundingRate, fundingSettlements, maxAdds } = inputs;
 
+        // Calculate initial trade quantity based on margin, leverage, and price
         const initialQuantity = (initialMargin * leverage) / initialPrice;
+        // Calculate theoretical take profit price for this initial position
         const initialTpPrice = initialPrice * (1 + (direction === 'long' ? tpPercent : -tpPercent) / 100);
 
-        const openingFee = calculateFee(initialQuantity, initialPrice, takerFee);
-        const closingFeeAtTp = calculateFee(initialQuantity, initialTpPrice, takerFee);
+        // Calculate opening and closing fees for this initial trade
+        const openingFee = m_calculateFee(initialQuantity, initialPrice, takerFee);
+        const closingFeeAtTp = m_calculateFee(initialQuantity, initialTpPrice, takerFee);
 
         const profitBeforeTradingFees = initialQuantity * Math.abs(initialTpPrice - initialPrice);
         let calculatedInitialTpProfit = profitBeforeTradingFees - openingFee - closingFeeAtTp;
@@ -234,14 +247,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Adds a row to the results table in the DOM to display step data.
-     * @param {object} stepData - Data for the current step (either initial or additional).
-     * @param {boolean} [isInitialStep=false] - (Optional) Indicates if this is the initial step. Can be inferred from stepData.step.
+     * Adds a row to the Martingale results table in the DOM to display step data.
+     * @param {object} stepData - Data for the current Martingale step.
      */
-    function updateStepInDOM(stepData, isInitialStep = false) {
+    function m_updateStepInDOM(stepData) {
         const row = stepsTbody.insertRow();
-        // Order of cells must match the table headers in index.html
-        //加仓序号 | 理论委托价 | 理论委托量 | 本次保证金 | 开仓手续费 | 本次未实现盈亏 | 加仓后均价 | 本次止盈价 | 本次止盈收益 | 距止盈需涨/跌 (%)
         row.insertCell().textContent = stepData.step;
         row.insertCell().textContent = stepData.addPrice.toFixed(6);
 
@@ -277,43 +287,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Calculates details for one additional margin call (a single step in the Martingale sequence).
-     * @param {object} inputs - The validated form inputs (e.g., initialPrice, addDiffPercent, etc.).
+     * Calculates details for one additional Martingale margin call.
+     * Calculates details for one additional Martingale margin call (a single step in the Martingale sequence).
+     * @param {object} inputs - The validated Martingale form inputs (e.g., initialPrice, addDiffPercent, etc.).
      * @param {object} previousStepCumulativeData - Cumulative data from the position's state *before* this current step
      *                                            (e.g., totalMargin, totalQuantity, avgPrice, accumulatedOpeningFees).
      * @param {number} stepNumber - The current additional step number (e.g., 1 for the first add, 2 for the second, etc.).
-     * @returns {object|null} Data for the new step, including calculated prices, PNL, new cumulative totals, fees etc.
-     *                        Returns null if calculation is not possible (e.g., calculated add price is <= 0).
+     * @returns {object|null} Data for the new step (e.g., addPrice, addQuantity, new avgPrice, tpPrice, tpProfit),
+     *                        or null if calculation is not possible (e.g., calculated add price is <= 0).
      */
-    function calculateAdditionalPositionStep(inputs, previousStepCumulativeData, stepNumber) {
+    function m_calculateAdditionalPositionStep(inputs, previousStepCumulativeData, stepNumber) {
         const { initialPrice, addDiffPercent, tpPercent, addMarginBase, leverage, amountMultiplier, diffMultiplier, direction, takerFee, fundingRate, fundingSettlements, maxAdds } = inputs;
 
         // Calculate margin for this specific additional step using the amount multiplier
         const currentAddMargin = addMarginBase * Math.pow(amountMultiplier, stepNumber - 1);
 
-        // Calculate the target cumulative percentage difference from the initial price to trigger this additional step
-        // This loop recalculates the target cumulative difference for the *current* step number using the diff multiplier.
+        // Calculate the target cumulative percentage difference from the initial price for this add step
         let cumulativeTargetDiffPercent = 0;
-        for (let k = 1; k <= stepNumber; k++) { // k goes from 1 up to current stepNumber
+        for (let k = 1; k <= stepNumber; k++) {
             cumulativeTargetDiffPercent += addDiffPercent * Math.pow(diffMultiplier, k - 1);
         }
 
-        // Calculate theoretical entry price for this additional step based on the cumulative difference
-        let currentAddPrice; // Price at which this additional margin is deployed
+        // Calculate theoretical entry price for this additional step
+        let currentAddPrice;
         if (direction === 'long') {
             currentAddPrice = initialPrice * (1 - cumulativeTargetDiffPercent / 100);
         } else { // short
             currentAddPrice = initialPrice * (1 + cumulativeTargetDiffPercent / 100);
         }
 
-        // Validate calculated price. If it's zero or negative, stop further calculations for this path.
+        // Validate calculated add price. If it's zero or negative, stop further calculations for this path.
         if (currentAddPrice <= 0) {
             const errorRow = stepsTbody.insertRow();
-            errorRow.innerHTML = `<td colspan="10" style="text-align:center; color: red;">错误：计算出的加仓价格 (${currentAddPrice.toFixed(8)}) 无效，停止计算后续加仓。</td>`; // Colspan matches table columns
-            return null; // Signal that this step failed
+            // Display error directly in the table and halt further additions for this calculation run.
+            errorRow.innerHTML = `<td colspan="10" style="text-align:center; color: red;">错误：计算出的加仓价格 (${currentAddPrice.toFixed(8)}) 无效，停止计算后续加仓。</td>`;
+            return null;
         }
 
-        // Calculate quantity for this additional step
+        // Calculate quantity for this additional step based on its margin, leverage, and add price
         const currentAddQuantity = (currentAddMargin * leverage) / currentAddPrice;
 
         // Update cumulative values by incorporating this additional step
@@ -343,14 +354,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Calculate fees for this specific additional step
-        const currentOpeningFee = calculateFee(currentAddQuantity, currentAddPrice, takerFee);
+        const currentOpeningFee = m_calculateFee(currentAddQuantity, currentAddPrice, takerFee);
         // Accumulate opening fees from all steps so far
         const accumulatedOpeningFees = previousStepCumulativeData.accumulatedOpeningFees + currentOpeningFee;
 
         // Calculate profit before any fees for the entire position up to this step
         const profitBeforeFees = newTotalQuantity * Math.abs(currentTpPriceForStep - newCurrentAvgPrice);
         // Calculate closing fee for the entire position if TP is hit at this stage
-        const closingFeeForTotalPositionAtTp = calculateFee(newTotalQuantity, currentTpPriceForStep, takerFee);
+        const closingFeeForTotalPositionAtTp = m_calculateFee(newTotalQuantity, currentTpPriceForStep, takerFee);
         // Calculate final take profit for this step, accounting for all opening fees and the closing fee for the total position
         let currentTpProfitWithFees = profitBeforeFees - accumulatedOpeningFees - closingFeeForTotalPositionAtTp;
 
@@ -386,43 +397,61 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Calculates the final summary figures after all Martingale steps are processed.
-     * @param {object} inputs - The validated form inputs.
+     * Calculates the final summary figures for the Martingale strategy.
+     * Calculates the final summary figures for the Martingale strategy after all steps are processed.
+     * @param {object} inputs - The validated Martingale form inputs.
      * @param {Array<object>} allStepsData - Array containing data objects from all processed steps (initial + additions).
      * @param {number} finalCumulativeAvgPrice - The final average price of the total position after all steps.
      * @param {number} finalCumulativeTotalMargin - The total margin invested across all steps.
-     * @param {number} priceOfLastTrade - The price at which the last trade (initial or an addition) was executed. This is used for PNL calculation.
+     * @param {number} priceOfLastTrade - The price at which the last trade (initial or an addition) was executed.
      * @param {number} finalCumulativeTotalQuantity - The total quantity of the asset held after all steps.
-     * @returns {object} An object containing all summary figures (e.g., PNL, liquidation price, etc.).
+     * @returns {object} An object containing all summary figures (e.g., finalAvgPrice, totalMargin, unrealized PNL, liquidation price, fees, profit).
      */
-    function calculateSummary(inputs, allStepsData, finalCumulativeAvgPrice, finalCumulativeTotalMargin, priceOfLastTrade, finalCumulativeTotalQuantity) {
+    function m_calculateSummary(inputs, allStepsData, finalCumulativeAvgPrice, finalCumulativeTotalMargin, priceOfLastTrade, finalCumulativeTotalQuantity) {
         const { direction, initialPrice, takerFee, tpPercent, maintenanceMarginRate } = inputs;
         let finalUnrealizedPnl = 0;
-        let calculatedLiqPrice = NaN;
-        let priceDiffFromStartToLastAddPercent = 0;
-        let liqPriceDiffFromAvgPercent = NaN;
-        const mmrDecimal = maintenanceMarginRate / 100;
+        let calculatedLiqPrice = NaN; // Liquidation Price
+        let priceDiffFromStartToLastAddPercent = 0; // Percentage difference from initial price to last add price
+        let liqPriceDiffFromAvgPercent = NaN; // Percentage difference from average price to liquidation price
+        const mmrDecimal = maintenanceMarginRate / 100; // Maintenance Margin Rate as a decimal
 
-        if (finalCumulativeTotalQuantity > 0) {
-            if (allStepsData.length > 0) {
-                if (direction === 'long') {
-                    finalUnrealizedPnl = finalCumulativeTotalQuantity * (priceOfLastTrade - finalCumulativeAvgPrice);
-                } else {
-                    finalUnrealizedPnl = finalCumulativeTotalQuantity * (finalCumulativeAvgPrice - priceOfLastTrade);
-                }
-            }
+        // Calculate liquidation price only if there's a position
+        if (finalCumulativeTotalQuantity <= 0) {
+            calculatedLiqPrice = NaN;
+        } else {
+            // Determine PNL context price: if last trade happened, use its price, otherwise initial price.
+            const priceForPnlContext = priceOfLastTrade !== 0 ? priceOfLastTrade : initialPrice;
 
+            // Calculate Unrealized PNL and Liquidation Price based on direction
             if (direction === 'long') {
+                finalUnrealizedPnl = finalCumulativeTotalQuantity * (priceForPnlContext - finalCumulativeAvgPrice);
+                // Liquidation formula for Long positions (approximation)
                 calculatedLiqPrice = finalCumulativeAvgPrice * (1 + mmrDecimal) - (finalCumulativeTotalMargin / finalCumulativeTotalQuantity);
-            } else {
+                if (calculatedLiqPrice < 0) { // Liquidation price cannot be negative for a long position.
+                    calculatedLiqPrice = 0;
+                }
+            } else { // Short
+                finalUnrealizedPnl = finalCumulativeTotalQuantity * (finalCumulativeAvgPrice - priceForPnlContext);
+                // Liquidation formula for Short positions (approximation)
                 calculatedLiqPrice = finalCumulativeAvgPrice * (1 - mmrDecimal) + (finalCumulativeTotalMargin / finalCumulativeTotalQuantity);
             }
 
-            if (finalCumulativeAvgPrice !== 0 && !isNaN(calculatedLiqPrice) && calculatedLiqPrice > 0) {
-                const diffToLiq = calculatedLiqPrice - finalCumulativeAvgPrice;
-                liqPriceDiffFromAvgPercent = (diffToLiq / finalCumulativeAvgPrice) * 100;
-            } else if (calculatedLiqPrice <= 0) {
-                 liqPriceDiffFromAvgPercent = direction === 'long' ? -100 : 100;
+            // Calculate percentage difference to liquidation price
+            if (finalCumulativeAvgPrice !== 0 && !isNaN(calculatedLiqPrice)) {
+                if (calculatedLiqPrice >= 0) {
+                    const diffToLiq = calculatedLiqPrice - finalCumulativeAvgPrice;
+                    if (finalCumulativeAvgPrice === 0 && diffToLiq === 0) {
+                        liqPriceDiffFromAvgPercent = 0;
+                    } else if (finalCumulativeAvgPrice === 0 && diffToLiq !== 0) {
+                        liqPriceDiffFromAvgPercent = (diffToLiq > 0) ? Infinity : -Infinity;
+                    } else {
+                        liqPriceDiffFromAvgPercent = (diffToLiq / finalCumulativeAvgPrice) * 100;
+                    }
+                } else {
+                     liqPriceDiffFromAvgPercent = direction === 'long' ? -100 : Infinity;
+                }
+            } else if (isNaN(calculatedLiqPrice) && finalCumulativeAvgPrice === 0) {
+                 liqPriceDiffFromAvgPercent = 0;
             }
         }
 
@@ -438,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (finalCumulativeTotalQuantity > 0) {
             const totalAccumulatedOpeningFees = allStepsData.reduce((sum, step) => sum + (step.openingFee || 0), 0);
             const finalTpPriceForSummary = finalCumulativeAvgPrice * (1 + (direction === 'long' ? tpPercent : -tpPercent) / 100);
-            const finalClosingFee = calculateFee(finalCumulativeTotalQuantity, finalTpPriceForSummary, takerFee);
+            const finalClosingFee = m_calculateFee(finalCumulativeTotalQuantity, finalTpPriceForSummary, takerFee);
             const profitBeforeAllFees = finalCumulativeTotalQuantity * Math.abs(finalTpPriceForSummary - finalCumulativeAvgPrice);
             // Final TP profit after ALL fees (trading and funding)
             finalTpProfitWithAllFees = profitBeforeAllFees - totalAccumulatedOpeningFees - finalClosingFee - totalEstimatedFundingCost;
@@ -464,13 +493,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Updates the summary section in the DOM with calculated Martingale figures.
+     * Updates the Martingale summary section in the DOM.
+     * Updates the Martingale summary section in the DOM with calculated figures.
      * Also sets tooltips for each summary item for better user understanding.
-     * @param {object} summaryData - An object containing all summary figures from `calculateSummary`.
+     * @param {object} summaryData - An object containing Martingale summary figures from `m_calculateSummary`.
      */
-    function updateSummaryInDOM(summaryData) {
+    function m_updateSummaryInDOM(summaryData) {
+        // Retrieve DOM elements for summary display
+        const finalAvgPriceSpan = document.getElementById('final-avg-price');
+        const totalMarginSpan = document.getElementById('total-margin');
+        const finalUnrealizedPnlSpan = document.getElementById('final-unrealized-pnl');
+        const liquidationPriceSpan = document.getElementById('liquidation-price'); // Martingale liq price span
+        const liqDiffPercentSpan = document.getElementById('liq-diff-percent');
+        const priceDiffPercentSpan = document.getElementById('price-diff-percent');
+        const totalFundingFeeSpan = document.getElementById('total-funding-fee');
+        const finalTpProfitSpan = document.getElementById('final-tp-profit');
+
         const initialPriceFromForm = parseFloat(document.getElementById('initial-price').value) || 0;
-        const totalFundingFeeSpan = document.getElementById('total-funding-fee'); // Get the new span
 
         finalAvgPriceSpan.textContent = summaryData.hasTrades ? summaryData.finalAvgPrice.toFixed(6) : initialPriceFromForm.toFixed(6);
         finalAvgPriceSpan.title = '所有加仓完成后，最终的总持仓平均成本价';
@@ -483,79 +522,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (summaryData.hasAdds) {
             priceDiffPercentSpan.textContent = `${summaryData.priceDiffPercentValue.toFixed(2)}%`;
-        } else if (parseInt(document.getElementById('max-adds').value) <= 0) {
+        } else if (parseInt(document.getElementById('max-adds').value) <= 0) { // Check if maxAdds was 0
              priceDiffPercentSpan.textContent = 'N/A (无加仓)';
         } else {
             priceDiffPercentSpan.textContent = '0.00% (无实际加仓)';
         }
         priceDiffPercentSpan.title = '从第一次开仓价格到最后一次加仓价格的价格变动百分比';
 
+        // Display Martingale Liquidation Price and related percentage difference
         if (summaryData.hasTrades && !isNaN(summaryData.estimatedLiqPrice)) {
             if (summaryData.estimatedLiqPrice > 0) {
                 liquidationPriceSpan.textContent = `${summaryData.estimatedLiqPrice.toFixed(6)} USDT`;
-                liquidationPriceSpan.style.color = '#e74c3c';
-            } else {
-                liquidationPriceSpan.textContent = `已低于或等于0`;
+                liquidationPriceSpan.style.color = '#e74c3c'; // Red for danger
+            } else { // Includes 0 for longs after flooring
+                liquidationPriceSpan.textContent = `≤0.000000 USDT`; // Indicate at or below zero
                 liquidationPriceSpan.style.color = '#e74c3c';
             }
 
-            if (!isNaN(summaryData.liqDiffPercentValue)) {
+            if (!isNaN(summaryData.liqDiffPercentValue) && isFinite(summaryData.liqDiffPercentValue)) {
                 liqDiffPercentSpan.textContent = `${summaryData.liqDiffPercentValue.toFixed(2)}%`;
                 const direction = document.getElementById('direction').value;
+                // Color based on whether the liquidation is in the adverse direction
                 liqDiffPercentSpan.style.color = (direction === 'long' && summaryData.liqDiffPercentValue < 0) || (direction === 'short' && summaryData.liqDiffPercentValue > 0) ? '#e74c3c' : '#2ecc71';
-            } else {
-                liqDiffPercentSpan.textContent = 'N/A';
-                liqDiffPercentSpan.style.color = '#777';
+            } else if (summaryData.liqDiffPercentValue === Infinity || summaryData.liqDiffPercentValue === -Infinity) {
+                liqDiffPercentSpan.textContent = (summaryData.liqDiffPercentValue > 0 ? '+' : '') + '∞%';
+                liqDiffPercentSpan.style.color = '#2ecc71'; // Green, very safe
             }
-        } else {
+             else {
+                liqDiffPercentSpan.textContent = 'N/A';
+                liqDiffPercentSpan.style.color = '#777'; // Default/grey for N/A
+            }
+        } else { // No trades or NaN liquidation price
             liquidationPriceSpan.textContent = '无法计算 (无持仓)';
             liquidationPriceSpan.style.color = '#777';
             liqDiffPercentSpan.textContent = 'N/A';
             liqDiffPercentSpan.style.color = '#777';
         }
-        liquidationPriceSpan.title = '根据总保证金、最终均价及维持保证金率估算的理论爆仓价格（已考虑维持保证金率，但不含未实现盈亏和额外费用影响）';
-        liqDiffPercentSpan.title = '从最终持仓均价到理论爆仓价格所需的价格变动百分比';
+        liquidationPriceSpan.title = '根据总保证金、最终均价及维持保证金率估算的理论爆仓价格。';
+        liqDiffPercentSpan.title = '从最终持仓均价到理论爆仓价格所需的价格变动百分比。';
 
         // Display Total Funding Fee
-        // Show '+' for positive (cost), default '-' for negative (gain). Format to 4 decimal places for precision.
         const fundingFeeText = summaryData.totalEstimatedFundingCost > 0 ? `+${summaryData.totalEstimatedFundingCost.toFixed(4)}` : summaryData.totalEstimatedFundingCost.toFixed(4);
         totalFundingFeeSpan.textContent = `${fundingFeeText} USDT`;
         totalFundingFeeSpan.title = '根据预估资金费率和结算次数, 以及每阶段持仓价值计算的总资金费用。正数为总支付，负数为总收到。';
-        // Color coding for funding fee: red for cost (positive), green for gain (negative), default for zero
         totalFundingFeeSpan.style.color = summaryData.totalEstimatedFundingCost > 0 ? '#e74c3c' : (summaryData.totalEstimatedFundingCost < 0 ? '#2ecc71' : '#333');
 
-
         finalTpProfitSpan.textContent = summaryData.finalTpProfit.toFixed(2);
-        finalTpProfitSpan.title = '若最终总持仓在最终止盈价平仓的理论总收益（已扣除所有开仓、平仓手续费及预估总资金费用）';
+        finalTpProfitSpan.title = '若最终总持仓在最终止盈价平仓的理论总收益（已扣除所有开仓、平仓手续费及预估总资金费用）。';
     }
 
     /**
      * Main function to trigger the Martingale calculation process.
      * It orchestrates getting inputs, validation, step-by-step calculation for initial and additional positions,
      * DOM updates for each step, and final summary calculation and display.
-     * Handles error display and clearing for user inputs.
+     * Main function to trigger the Martingale calculation process.
+     * Orchestrates getting inputs, validation, step-by-step calculation for initial and additional positions,
+     * DOM updates for each step, and final summary calculation and display.
      */
     function calculateMartingale() {
-        clearValidationErrors(); // 1. Clear any old error messages
-        const inputs = getFormInputs(); // 2. Get all form inputs
-        const validationErrors = validateInputs(inputs); // 3. Validate inputs
+        m_clearValidationErrors(); // Clear previous errors from Martingale form
+        const inputs = m_getFormInputs();
+        const validationErrors = m_validateInputs(inputs);
 
-        // If there are validation errors, display them and stop processing
         if (Object.keys(validationErrors).length > 0) {
-            displayValidationErrors(validationErrors);
-            resultsContainer.style.display = 'none'; // Hide results section if inputs are invalid
+            m_displayValidationErrors(validationErrors); // Display new errors
+            resultsContainer.style.display = 'none'; // Hide results if inputs invalid
             return;
         }
 
         stepsTbody.innerHTML = ''; // Clear previous results from the steps table
-        const allStepsData = []; // Array to store data objects for each step (initial and additions)
+        const allStepsData = []; // Array to store data for each step
 
         // --- Initial Position (Step 0) ---
-        const initialStepData = calculateInitialPosition(inputs); // Calculate details for the first position
-        updateStepInDOM(initialStepData, true); // Display initial step in the table
-        allStepsData.push(initialStepData); // Store data for the initial step
+        const initialStepData = m_calculateInitialPosition(inputs);
+        m_updateStepInDOM(initialStepData); // Add initial step to table
+        allStepsData.push(initialStepData);
 
-        // Initialize cumulative tracking variables with data from the initial step.
+        // Initialize cumulative tracking variables from the initial step
         // These variables will be updated iteratively as each additional position is calculated.
         let currentCumulativeTotalMargin = initialStepData.addMargin;
         let currentCumulativeTotalQuantity = initialStepData.addQuantity;
@@ -574,16 +617,15 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             // Calculate details for the current additional position step
-            const additionalStepData = calculateAdditionalPositionStep(inputs, positionStateBeforeThisAdd, i);
+            const additionalStepData = m_calculateAdditionalPositionStep(inputs, positionStateBeforeThisAdd, i);
 
             if (!additionalStepData) {
-                // If calculation failed (e.g., invalid price), an error message is shown by calculateAdditionalPositionStep.
-                // Stop processing further additions.
+                // If calculation failed, an error message is shown by m_calculateAdditionalPositionStep.
                 break;
             }
 
-            updateStepInDOM(additionalStepData, false); // Display this additional step in the table
-            allStepsData.push(additionalStepData); // Store this step's data
+            m_updateStepInDOM(additionalStepData);
+            allStepsData.push(additionalStepData);
 
             // Update cumulative tracking variables with results from the current additional step
             currentCumulativeTotalMargin = additionalStepData.totalMargin;
@@ -601,7 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Calculate all final summary figures based on the complete set of processed steps
-        const summaryData = calculateSummary(
+        const summaryData = m_calculateSummary(
             inputs,
             allStepsData,
             currentCumulativeAvgPrice,
@@ -609,45 +651,46 @@ document.addEventListener('DOMContentLoaded', () => {
             priceOfLastTrade,
             currentCumulativeTotalQuantity
         );
-        updateSummaryInDOM(summaryData); // Display these summary figures in the DOM
+        m_updateSummaryInDOM(summaryData);
 
-        resultsContainer.style.display = 'block'; // Make the results section visible
-        resultsContainer.scrollIntoView({ behavior: 'smooth' }); // Smoothly scroll to the results
+        resultsContainer.style.display = 'block';
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // --- Export to Image Functionality ---
+    // --- Export to Image Functionality (Martingale specific for now) ---
     const exportButton = document.getElementById('export-image-btn');
-    /**
-     * Handles the "Export to Image" button click event.
-     * Captures the content of the '.calculator-container' element using the html2canvas library
-     * and initiates a download of the captured image as a PNG file.
-     * Generates a dynamic filename based on current calculator inputs for easy identification.
-     */
-    exportButton.addEventListener('click', () => {
-        const elementToCapture = document.querySelector('.calculator-container');
-        if (!elementToCapture) {
-            alert('无法找到要导出的元素。');
-            return;
-        }
-
-        const resultsAreVisible = resultsContainer.style.display === 'block';
-        if (!resultsAreVisible) {
-            alert('请先进行计算，使结果可见后再导出。');
-            return;
-        }
-
-        html2canvas(elementToCapture, {
-            useCORS: true,
-            logging: true,
-            onclone: (clonedDocument) => {
-                // Callback executed after cloning the DOM, before rendering.
-                // Can be used for temporary modifications to the cloned DOM for the screenshot.
+    if (exportButton) { // Ensure button exists before adding listener
+        exportButton.addEventListener('click', () => {
+            // Select the Martingale calculator's content area for image capture
+            const elementToCapture = document.getElementById('martingale-calculator-content');
+            if (!elementToCapture) {
+                alert('无法找到马丁格尔计算器内容进行导出。'); // Error if element not found
+                return;
             }
-        }).then(canvas => {
-            const inputsForFilename = getFormInputs();
+            // Ensure Martingale results are actually visible before attempting export
+            const martingaleResultsDisplay = elementToCapture.querySelector('#results');
+            if (!martingaleResultsDisplay || martingaleResultsDisplay.style.display === 'none') {
+                alert('请先进行马丁格尔计算，使结果可见后再导出。'); // User guidance
+                return;
+            }
 
-            const formatNumForFilename = (num, decimals = 2) => (isNaN(Number(num)) ? 'NaN' : Number(num).toFixed(decimals));
-            const formatIntForFilename = (num) => (isNaN(parseInt(num)) ? 'NaN' : parseInt(num));
+            // Use html2canvas to capture the specified element
+            html2canvas(elementToCapture, {
+                useCORS: true, // Enable CORS if loading external images/assets (though not used here)
+                logging: true, // Enable logging for debugging html2canvas issues
+                onclone: (clonedDocument) => {
+                    // This callback runs after the DOM is cloned but before rendering to canvas.
+                    // Useful for making temporary changes to the cloned DOM for the screenshot.
+                    // For instance, ensuring results are visible if they were hidden by other means.
+                    const clonedResults = clonedDocument.getElementById('results');
+                    if (clonedResults) clonedResults.style.display = 'block'; // Force display of results in clone
+                }
+            }).then(canvas => {
+                const inputsForFilename = m_getFormInputs(); // Get current Martingale inputs for filename
+
+                // Helper functions for formatting numbers in the filename
+                const formatNumForFilename = (num, decimals = 2) => (isNaN(Number(num)) ? 'NaN' : Number(num).toFixed(decimals));
+                const formatIntForFilename = (num) => (isNaN(parseInt(num)) ? 'NaN' : parseInt(num));
 
             // Construct filename with key parameters
             const filenameParts = [
@@ -684,4 +727,233 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // --- Standard Contract Calculator Global Elements & Event Listener ---
+    const stdForm = document.getElementById('standard-calculator-form'); // Standard calculator form
+    const stdResultsContainer = document.getElementById('std-results');   // Standard calculator results container
+    const stdCalculateBtn = document.getElementById('std-calculate-btn'); // Standard calculator calculate button
+
+    if (stdCalculateBtn) { // Check if the button exists
+        stdCalculateBtn.addEventListener('click', () => {
+            calculateStandardContract(); // Trigger main Standard Contract calculation
+        });
+    }
+
+    // --- Tab Navigation (Shared Functionality) ---
+    /**
+     * Initializes tab navigation functionality.
+     * Allows switching between different calculator interfaces.
+     */
+    function initTabNavigation() {
+        const tabButtons = document.querySelectorAll('.tab-btn'); // All tab buttons
+        const calculatorContents = document.querySelectorAll('.calculator-content'); // All content sections for tabs
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetTab = button.dataset.tab; // Get target tab from data attribute
+
+                // Deactivate all tab buttons
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                // Activate the clicked tab button
+                button.classList.add('active');
+
+                // Hide all calculator content sections and show the target one
+                calculatorContents.forEach(content => {
+                    // Toggle 'hidden' class based on whether the content ID matches the target tab
+                    content.classList.toggle('hidden', content.id !== `${targetTab}-calculator-content`);
+                });
+            });
+        });
+        // Note: Default active tab is set via HTML classes.
+    }
+
+    // --- Standard Contract Calculator Helper Functions ---
+
+    /**
+     * Gathers inputs from the Standard Contract calculator form.
+     * Converts percentages to decimals.
+     * @returns {object} Parsed inputs for the Standard calculator, including direction, entryPrice,
+     *                   exitPrice, quantity, leverage, takerFeeRate (decimal), maintenanceMarginRate (decimal).
+     */
+    function s_getInputs() {
+        const takerFeePercent = parseFloat(document.getElementById('std-taker-fee').value);
+        const maintenanceMarginRatePercent = parseFloat(document.getElementById('std-maintenance-margin-rate').value);
+
+        return {
+            direction: document.getElementById('std-direction').value,
+            entryPrice: parseFloat(document.getElementById('std-entry-price').value),
+            exitPrice: parseFloat(document.getElementById('std-exit-price').value),
+            quantity: parseFloat(document.getElementById('std-quantity').value),
+            leverage: parseFloat(document.getElementById('std-leverage').value),
+            takerFeeRate: isNaN(takerFeePercent) ? 0 : takerFeePercent / 100, // Convert to decimal
+            maintenanceMarginRate: isNaN(maintenanceMarginRatePercent) ? 0 : maintenanceMarginRatePercent / 100, // Convert to decimal
+        };
+    }
+
+    /**
+     * Validates inputs for the Standard Contract calculator.
+     * @param {object} inputs - Parsed inputs from `s_getInputs()`.
+     * @returns {object} An errors object where keys are input field IDs and values are error messages.
+     *                   Returns an empty object if all inputs are valid.
+     */
+    function s_validateInputs(inputs) {
+        const errors = {};
+        if (isNaN(inputs.entryPrice) || inputs.entryPrice <= 0) {
+            errors['std-entry-price'] = '开仓价格必须是大于0的数字。';
+        }
+        if (isNaN(inputs.exitPrice) || inputs.exitPrice <= 0) {
+            errors['std-exit-price'] = '平仓价格必须是大于0的数字。';
+        }
+        if (isNaN(inputs.quantity) || inputs.quantity <= 0) {
+            errors['std-quantity'] = '开仓数量必须是大于0的数字。';
+        }
+        if (isNaN(inputs.leverage) || inputs.leverage < 1) {
+            errors['std-leverage'] = '杠杆倍数必须至少为1。';
+        }
+        // Validate original percentage values for user feedback context
+        const originalTakerFee = parseFloat(document.getElementById('std-taker-fee').value);
+        if (isNaN(originalTakerFee) || originalTakerFee < 0) {
+            errors['std-taker-fee'] = 'Taker 手续费率不能为负数。';
+        }
+        const originalMaintenanceMarginRate = parseFloat(document.getElementById('std-maintenance-margin-rate').value);
+        if (isNaN(originalMaintenanceMarginRate) || originalMaintenanceMarginRate < 0 || originalMaintenanceMarginRate >= 100) {
+            errors['std-maintenance-margin-rate'] = '维持保证金率必须是0到小于100之间的数字。';
+        }
+        return errors;
+    }
+
+    /**
+     * Main calculation function for the Standard Contract calculator.
+     * It orchestrates input gathering, validation, calculation of PNL, ROE, fees, and liquidation price,
+     * and then displays these results.
+     */
+    function calculateStandardContract() {
+        s_clearValidationErrors(); // Clear previous errors
+        const inputs = s_getInputs(); // Get parsed inputs
+        const errors = s_validateInputs(inputs); // Validate them
+
+        if (Object.keys(errors).length > 0) {
+            s_displayValidationErrors(errors); // Show errors
+            stdResultsContainer.style.display = 'none'; // Hide results area
+            return;
+        }
+
+        const { direction, entryPrice, exitPrice, quantity, leverage, takerFeeRate, maintenanceMarginRate: mmrDecimal } = inputs;
+
+        let pnl = 0;
+        let liquidationPrice = NaN; // Default to NaN, indicating it might not be calculable
+
+        // Calculate Initial Margin: (Entry Price * Quantity) / Leverage
+        const initialMargin = (entryPrice * quantity) / leverage;
+        // Calculate Opening Fee: Entry Price * Quantity * Taker Fee Rate
+        const openingFee = entryPrice * quantity * takerFeeRate;
+        // Calculate Closing Fee: Exit Price * Quantity * Taker Fee Rate
+        const closingFee = exitPrice * quantity * takerFeeRate;
+        const totalFees = openingFee + closingFee;
+
+        // Calculate PNL and Liquidation Price based on trade direction
+        if (direction === 'long') {
+            // PNL for Long: (Exit Price - Entry Price) * Quantity - Total Fees
+            pnl = (exitPrice - entryPrice) * quantity - totalFees;
+            // New Liquidation Price formula for Long
+            if (mmrDecimal >= 1) { // Maintenance margin rate cannot be 100% or more
+                liquidationPrice = NaN;
+            } else if (leverage <= 0 || (1 - mmrDecimal) === 0) { // Avoid division by zero or invalid leverage
+                liquidationPrice = NaN;
+            } else {
+                liquidationPrice = entryPrice * (1 - (1 / leverage)) / (1 - mmrDecimal);
+                if (liquidationPrice < 0) { // Liquidation price cannot be negative for a long.
+                    liquidationPrice = 0;
+                }
+            }
+        } else { // Short
+            // PNL for Short: (Entry Price - Exit Price) * Quantity - Total Fees
+            pnl = (entryPrice - exitPrice) * quantity - totalFees;
+            // New Liquidation Price formula for Short
+            if (mmrDecimal <= -1 || (1 + mmrDecimal) === 0) { // MMR cannot be -100% or less, or make denominator zero.
+                liquidationPrice = NaN;
+            } else if (leverage <= 0) { // Invalid leverage
+                liquidationPrice = NaN;
+            } else {
+                liquidationPrice = entryPrice * (1 + (1 / leverage)) / (1 + mmrDecimal);
+                // A negative liquidation price for a short is usually not meaningful.
+                if (liquidationPrice < 0) liquidationPrice = NaN;
+            }
+        }
+
+        // ROE %: (PNL / Initial Margin) * 100
+        const roe = (initialMargin > 0) ? (pnl / initialMargin) * 100 : 0; // Avoid division by zero if no margin
+
+        const results = {
+            pnl: pnl,
+            roe: roe,
+            liquidationPrice: liquidationPrice,
+            totalFees: totalFees,
+            initialMargin: initialMargin
+        };
+
+        s_displayResults(results); // Display the calculated results
+        stdResultsContainer.style.display = 'block'; // Make results visible
+        stdResultsContainer.scrollIntoView({ behavior: 'smooth' }); // Scroll to results
+    }
+
+    /**
+     * Displays calculated results for the Standard Contract calculator in the UI.
+     * Formats numbers and handles NaN/Infinity values.
+     * @param {object} results - An object containing calculated PNL, ROE, Liquidation Price, and Total Fees.
+     */
+    function s_displayResults(results) {
+        const pnlEl = document.getElementById('std-pnl');
+        const roeEl = document.getElementById('std-roe');
+        const liqPriceEl = document.getElementById('std-liquidation-price');
+        const feesEl = document.getElementById('std-total-fees');
+
+        // Display PNL, formatted to 2 decimal places, or "N/A" if not a number.
+        pnlEl.textContent = isNaN(results.pnl) ? 'N/A' : results.pnl.toFixed(2);
+        // Display ROE, formatted to 2 decimal places with a "%" sign, or "N/A" if not a finite number.
+        roeEl.textContent = isNaN(results.roe) || !isFinite(results.roe) ? 'N/A' : results.roe.toFixed(2) + '%';
+
+        // Display Liquidation Price with special handling for NaN or zero values.
+        const currentDirection = document.getElementById('std-direction').value;
+        if (isNaN(results.liquidationPrice)) {
+            liqPriceEl.textContent = '无法计算'; // "Cannot Calculate" for NaN
+        } else if (results.liquidationPrice === 0 && currentDirection === 'long') {
+            liqPriceEl.textContent = '≤0.000000'; // Indicate at or below zero for long positions
+        } else {
+            liqPriceEl.textContent = results.liquidationPrice.toFixed(6); // Format to 6 decimal places
+        }
+        // Display Total Fees, formatted to 4 decimal places, or "N/A" if not a number.
+        feesEl.textContent = isNaN(results.totalFees) ? 'N/A' : results.totalFees.toFixed(4);
+    }
+
+    /**
+     * Clears previously displayed validation error messages from the Standard calculator form.
+     */
+    function s_clearValidationErrors() {
+        const errorMessages = document.querySelectorAll('#standard-calculator-form .error-message');
+        errorMessages.forEach(msgElement => msgElement.remove());
+    }
+
+    /**
+     * Displays validation errors for the Standard calculator form fields.
+     * @param {object} errors - An object where keys are Standard calculator input field IDs and values are error messages.
+     */
+    function s_displayValidationErrors(errors) {
+        for (const fieldId in errors) {
+            const inputFieldElement = document.getElementById(fieldId);
+            if (inputFieldElement) {
+                const parentFormGroup = inputFieldElement.closest('.form-group');
+                if (parentFormGroup) {
+                    const existingError = parentFormGroup.querySelector('.error-message');
+                    if (existingError) existingError.remove(); // Remove old error first
+                    const errorSpan = document.createElement('span');
+                    errorSpan.className = 'error-message';
+                    errorSpan.textContent = errors[fieldId];
+                    parentFormGroup.appendChild(errorSpan); // Add new error
+                }
+            }
+        }
+    }
+
+    // Initialize tab navigation on DOMContentLoaded
+    initTabNavigation();
 });
